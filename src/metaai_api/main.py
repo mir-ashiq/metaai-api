@@ -60,7 +60,6 @@ class MetaAI:
         Fetch lsd and fb_dtsg tokens if they're missing from cookies.
         """
         try:
-            print("[*] Fetching missing tokens (lsd, fb_dtsg) from Meta AI...")
             cookies_str = "; ".join([f"{k}={v}" for k, v in self.cookies.items() if v])
             
             session = HTMLSession()
@@ -71,16 +70,13 @@ class MetaAI:
                 lsd = extract_value(response.text, start_str='"LSD",[],{"token":"', end_str='"')
                 if lsd:
                     self.cookies["lsd"] = lsd
-                    print(f"[✓] Fetched lsd: {lsd}")
             
             if "fb_dtsg" not in self.cookies:
                 fb_dtsg = extract_value(response.text, start_str='DTSGInitData",[],{"token":"', end_str='"')
                 if fb_dtsg:
                     self.cookies["fb_dtsg"] = fb_dtsg
-                    print(f"[✓] Fetched fb_dtsg: {fb_dtsg[:50]}...")
         except Exception as e:
-            print(f"[!] Warning: Could not auto-fetch tokens: {e}")
-            print("[!] Some features may not work without lsd and fb_dtsg")
+            pass  # Silent fail, features may not work without tokens
 
     def get_access_token(self) -> str:
         """
