@@ -1,0 +1,22 @@
+# Meta AI Python SDK - Core Dependencies
+# Version: 2.0.0
+
+# HTTP client
+requests>=2.31.0
+
+# HTML parsing and session management
+requests-html>=0.10.0
+
+# HTML cleaning
+lxml-html-clean>=0.1.1
+
+# HTML parsing
+beautifulsoup4>=4.9.0
+
+# Optional: Development dependencies
+# Install with: pip install -e ".[dev]"
+# pytest>=7.0.0
+# black>=22.0.0
+# flake8>=4.0.0
+# mypy>=0.950
+bs4==0.0.2
