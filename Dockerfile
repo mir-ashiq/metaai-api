@@ -17,25 +17,17 @@ RUN apt-get update && \
 
 # Copy requirements first (for better caching)
 COPY requirements.txt .
-COPY setup.py .
-COPY setup.cfg .
-COPY pyproject.toml .
-COPY MANIFEST.in .
-COPY README.md .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir hypercorn>=0.18.0
 
-# Copy source code
-COPY src/ ./src/
-
-# Install the package in development mode
-RUN pip install --no-cache-dir -e .
-
-# Copy application code
+# Copy all application files
 COPY . .
+
+# Install the package
+RUN pip install --no-cache-dir -e .
 
 # Make start script executable
 RUN chmod +x start.sh
