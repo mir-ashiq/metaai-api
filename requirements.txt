@@ -17,7 +17,7 @@ beautifulsoup4>=4.9.0
 fastapi>=0.110.0,<1.0.0
 uvicorn[standard]>=0.24.0
 python-dotenv>=1.0.0
-
+hypercorn>=0.18.0
 # Optional: Development dependencies
 # Install with: pip install -e ".[dev]"
 # pytest>=7.0.0
