@@ -1,0 +1,48 @@
+# MANIFEST.in - Include/Exclude files for distribution
+
+# Include documentation
+include README.md
+include LICENSE
+include CHANGELOG.md
+include CONTRIBUTING.md
+include SECURITY.md
+include ARCHITECTURE.md
+include VIDEO_GENERATION_README.md
+include QUICK_REFERENCE.md
+
+# Include configuration files
+include pyproject.toml
+include setup.py
+include setup.cfg
+include requirements.txt
+
+# Include examples
+recursive-include examples *.py
+
+# Include package data
+recursive-include src/metaai_api *.py
+
+# Exclude development and build files
+exclude .gitignore
+exclude .gitattributes
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+recursive-exclude * *.so
+recursive-exclude * *.dylib
+recursive-exclude * .DS_Store
+
+# Exclude tests and CI
+recursive-exclude tests *
+recursive-exclude .github *
+
+# Exclude IDE and editor files
+recursive-exclude * .vscode
+recursive-exclude * .idea
+recursive-exclude * *.swp
+recursive-exclude * *.swo
+recursive-exclude * *~
+
+# Exclude temporary files
+recursive-exclude * *.tmp
+recursive-exclude * *.bak
+recursive-exclude * *.log
