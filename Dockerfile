@@ -7,7 +7,8 @@ WORKDIR /app
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PORT=8000
+    PORT=8000 \
+    PYTHONPATH=/app/src:$PYTHONPATH
 
 # Install system dependencies
 RUN apt-get update && \
@@ -25,6 +26,9 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 # Copy all application files
 COPY . .
+
+# Verify files are copied (debug)
+RUN ls -la /app/src/metaai_api/
 
 # Install the package
 RUN pip install --no-cache-dir -e .
