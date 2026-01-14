@@ -66,14 +66,29 @@ All in one SDK
 
 ## 📦 Installation
 
-```bash
-# Quick install from PyPI
-pip install metaai-api
+### SDK Only (Lightweight)
 
-# Or clone from GitHub
+For using Meta AI as a Python library:
+
+```bash
+pip install metaai-api
+```
+
+### SDK + API Server
+
+For deploying as a REST API service:
+
+```bash
+pip install metaai-api[api]
+```
+
+### From Source
+
+```bash
 git clone https://github.com/mir-ashiq/metaai-api.git
 cd metaai-api
-pip install -e .
+pip install -e .          # SDK only
+pip install -e ".[api]"   # SDK + API server
 ```
 
 **System Requirements:** Python 3.7+ • Internet Connection • That's it!
@@ -241,7 +256,77 @@ print(response["message"])
 
 ---
 
-## 🎬 Video Generation
+## � REST API Server (Optional)
+
+Deploy Meta AI as a REST API service that anyone can use! The API server auto-refreshes cookies to keep sessions alive.
+
+### Installation
+
+```bash
+pip install metaai-api[api]
+```
+
+### Setup
+
+1. **Get your Meta AI cookies** (see [Video Generation](#-video-generation) section)
+2. **Create `.env` file:**
+
+```env
+META_AI_DATR=your_datr_cookie
+META_AI_ABRA_SESS=your_abra_sess_cookie
+META_AI_DPR=1
+META_AI_WD=1920x1080
+META_AI_REFRESH_INTERVAL_SECONDS=3600
+```
+
+3. **Start the server:**
+
+```bash
+uvicorn metaai_api.api_server:app --host 0.0.0.0 --port 8000
+```
+
+### API Endpoints
+
+| Endpoint               | Method | Description                            |
+| ---------------------- | ------ | -------------------------------------- |
+| `/chat`                | POST   | Send chat messages                     |
+| `/video`               | POST   | Generate video (blocks until complete) |
+| `/video/async`         | POST   | Start async video generation           |
+| `/video/jobs/{job_id}` | GET    | Poll async job status                  |
+| `/healthz`             | GET    | Health check                           |
+
+### Example Usage
+
+```python
+import requests
+
+# Chat
+response = requests.post("http://localhost:8000/chat", json={
+    "message": "What is the capital of France?",
+    "stream": False
+})
+print(response.json())
+
+# Async video generation
+job = requests.post("http://localhost:8000/video/async", json={
+    "prompt": "Generate a video of a sunset"
+})
+job_id = job.json()["job_id"]
+
+# Poll for result
+status = requests.get(f"http://localhost:8000/video/jobs/{job_id}")
+print(status.json())
+```
+
+### Testing
+
+```bash
+python test_api.py
+```
+
+---
+
+## �🎬 Video Generation
 
 Create AI-generated videos from text descriptions!
 

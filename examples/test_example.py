@@ -6,7 +6,7 @@ Only requires cookies - everything else is automatic!
 from metaai_api import VideoGenerator
 
 # Test cookies (replace with your actual cookies)
-COOKIES = "datr=2sAeaQCXXPiuz7CKc8KhIYx7; wd=1536x443; abra_sess=FrKF8dSY%2FfECFgQYDkVtcTVPYkRTSVRzRTV3FtKD9pENAA%3D%3D; dpr=1.25"
+COOKIES = "datr=datrcookie; wd=1536x443; abra_sess=abrasessioncookie; dpr=1.25"
 
 print("="*80)
 print("Testing VideoGenerator with Automatic Token Fetching")
@@ -38,9 +38,9 @@ try:
     # Test 3: Initialize with cookies dict
     print("\n[Test 3] Initializing with cookies dictionary...")
     cookies_dict = {
-        "datr": "2sAeaQCXXPiuz7CKc8KhIYx7",
+        "datr": "datrcookie",
         "wd": "1536x443",
-        "abra_sess": "FrKF8dSY%2FfECFgQYDkVtcTVPYkRTSVRzRTV3FtKD9pENAA%3D%3D",
+        "abra_sess": "abrasessioncookie",
         "dpr": "1.25"
     }
     video_gen2 = VideoGenerator(cookies_dict=cookies_dict)

@@ -1,17 +1,18 @@
 # Meta AI Python SDK - Core Dependencies
 # Version: 2.0.0
 
-# HTTP client
+# Core SDK dependencies (always required)
 requests>=2.31.0
-
-# HTML parsing and session management
 requests-html>=0.10.0
-
-# HTML cleaning
 lxml-html-clean>=0.1.1
-
-# HTML parsing
 beautifulsoup4>=4.9.0
+
+# API Server dependencies (optional - install with: pip install metaai-api[api])
+# Uncomment below if you want to install API dependencies manually:
+# fastapi>=0.95.2,<0.96.0
+# uvicorn[standard]>=0.22.0,<0.24.0
+# python-multipart>=0.0.6
+# python-dotenv>=1.0.0
 
 # Optional: Development dependencies
 # Install with: pip install -e ".[dev]"

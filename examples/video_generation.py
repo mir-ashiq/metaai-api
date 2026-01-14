@@ -8,9 +8,9 @@ import json
 
 # Your cookies (get from browser)
 cookies = {
-    "datr": "2sAeaQCXXPiuz7CKc8KhIYx7",
+    "datr": "datrcookie",
     "wd": "1536x443",
-    "abra_sess": "FrKF8dSY%2FfECFgQYDkVtcTVPYkRTSVRzRTV3FtKD9pENAA%3D%3D",
+    "abra_sess": "abrasessioncookie",
     "dpr": "1.25"
 }
 

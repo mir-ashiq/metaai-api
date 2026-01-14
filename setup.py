@@ -40,6 +40,12 @@ setuptools.setup(
     python_requires=">=3.7",
     extras_require={
         "dev": ["check-manifest", "pytest", "black", "flake8"],
+        "api": [
+            "fastapi>=0.95.2,<0.96.0",
+            "uvicorn[standard]>=0.22.0,<0.24.0",
+            "python-multipart>=0.0.6",
+            "python-dotenv>=1.0.0",
+        ],
     },
     install_requires=[
         "requests>=2.31.0",
