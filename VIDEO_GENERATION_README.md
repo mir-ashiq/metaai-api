@@ -2,7 +2,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/mir-ashiq/meta-ai-python)
+[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/mir-ashiq/metaai-api)
 
 Complete guide for generating AI videos using Meta AI Python SDK with automatic token management and seamless integration.
 
@@ -59,11 +59,12 @@ That's it! No need to manually fetch tokens or use separate classes. 🎉
 
 ```bash
 # Install from source
-cd metaai_api
+git clone https://github.com/mir-ashiq/metaai-api.git
+cd metaai-api
 pip install -e .
 
 # Or install directly
-pip install git+https://github.com/mir-ashiq/meta-ai-python.git
+pip install git+https://github.com/mir-ashiq/metaai-api.git
 ```
 
 ---
@@ -109,7 +110,7 @@ cookies = {
 ### Initialize MetaAI
 
 ```python
-from meta_ai_api import MetaAI
+from metaai_api import MetaAI
 
 # Method 1: With cookies dictionary (recommended)
 ai = MetaAI(cookies={
@@ -300,7 +301,7 @@ if result["success"]:
 ### Example 1: Simple Video Generation
 
 ```python
-from meta_ai_api import MetaAI
+from metaai_api import MetaAI
 
 ai = MetaAI(cookies={"datr": "...", "abra_sess": "..."})
 result = ai.generate_video("Generate a video of a cat")
@@ -314,7 +315,7 @@ if result["success"]:
 ### Example 2: Batch Generation
 
 ```python
-from meta_ai_api import MetaAI
+from metaai_api import MetaAI
 
 ai = MetaAI(cookies=cookies)
 
@@ -336,7 +337,7 @@ print(f"Generated {len(successful)}/{len(prompts)} videos")
 ### Example 3: Custom Timeout
 
 ```python
-from meta_ai_api import MetaAI
+from metaai_api import MetaAI
 
 ai = MetaAI(cookies=cookies)
 
@@ -353,7 +354,7 @@ result = ai.generate_video(
 ### Example 4: Download Generated Videos
 
 ```python
-from meta_ai_api import MetaAI
+from metaai_api import MetaAI
 import requests
 
 ai = MetaAI(cookies=cookies)
@@ -375,7 +376,7 @@ if result["success"]:
 ### Example 5: Complete Workflow
 
 ```python
-from meta_ai_api import MetaAI
+from metaai_api import MetaAI
 import json
 from datetime import datetime
 
@@ -488,7 +489,7 @@ else:
 **Before:**
 
 ```python
-from meta_ai_api import VideoGenerator
+from metaai_api import VideoGenerator
 
 video_gen = VideoGenerator(cookies_str="...")
 result = video_gen.generate_video(prompt)
@@ -497,7 +498,7 @@ result = video_gen.generate_video(prompt)
 **After:**
 
 ```python
-from meta_ai_api import MetaAI
+from metaai_api import MetaAI
 
 ai = MetaAI(cookies={"datr": "...", "abra_sess": "..."})
 result = ai.generate_video(prompt)

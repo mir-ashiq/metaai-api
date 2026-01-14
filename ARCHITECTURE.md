@@ -11,7 +11,7 @@ meta-ai-python/
 │   │   └── python-publish.yml  # PyPI publishing
 │   └── README.md               # GitHub repository info
 │
-├── src/meta_ai_api/
+├── src/metaai_api/
 │   ├── __init__.py            # Package initialization and exports
 │   ├── main.py                # Core MetaAI class (chat, video, images)
 │   ├── video_generation.py    # VideoGenerator class

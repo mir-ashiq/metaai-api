@@ -60,7 +60,7 @@ pip install -e ".[dev]"
 
 ```
 meta-ai-python/
-├── src/meta_ai_api/
+├── src/metaai_api/
 │   ├── __init__.py
 │   ├── main.py              # Core MetaAI class
 │   ├── video_generation.py  # Video generation
@@ -227,7 +227,7 @@ pytest tests/
 pytest tests/test_video_generation.py
 
 # Run with coverage
-pytest --cov=meta_ai_api tests/
+pytest --cov=metaai_api tests/
 ```
 
 ### Writing Tests

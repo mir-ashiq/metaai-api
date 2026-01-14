@@ -5,7 +5,7 @@
 [![Python Version](https://img.shields.io/badge/python-3.7%2B-blue?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)](LICENSE)
 [![PyPI](https://img.shields.io/badge/PyPI-v2.0.0-orange?style=for-the-badge&logo=pypi&logoColor=white)](https://pypi.org/project/metaai-api/)
-[![GitHub](https://img.shields.io/badge/GitHub-mir--ashiq-black?style=for-the-badge&logo=github)](https://github.com/mir-ashiq/meta-ai-python)
+[![GitHub](https://img.shields.io/badge/GitHub-mir--ashiq-black?style=for-the-badge&logo=github)](https://github.com/mir-ashiq/metaai-api)
 
 **Unleash the Power of Meta AI with Python** 🚀
 
@@ -71,8 +71,8 @@ All in one SDK
 pip install metaai-api
 
 # Or clone from GitHub
-git clone https://github.com/mir-ashiq/meta-ai-python.git
-cd meta-ai-python
+git clone https://github.com/mir-ashiq/metaai-api.git
+cd metaai-api
 pip install -e .
 ```
 
@@ -107,7 +107,7 @@ with the Celtics winning Game 5 at TD Garden in Boston.
 ### Example 2: Get Stock Market Info
 
 ```python
-from meta_ai_api import MetaAI
+from metaai_api import MetaAI
 
 ai = MetaAI()
 response = ai.prompt("What is the current price of Bitcoin?")
@@ -130,7 +130,7 @@ largest cryptocurrency by market cap.
 ### Example 3: Solve Math Problems
 
 ```python
-from meta_ai_api import MetaAI
+from metaai_api import MetaAI
 
 ai = MetaAI()
 
@@ -167,7 +167,7 @@ This calculation uses the compound interest formula: A = P(1 + r/n)^(nt)
 Watch responses appear in real-time, like ChatGPT:
 
 ```python
-from meta_ai_api import MetaAI
+from metaai_api import MetaAI
 
 ai = MetaAI()
 
@@ -194,7 +194,7 @@ cryptography, and complex simulations.
 Have natural back-and-forth conversations:
 
 ```python
-from meta_ai_api import MetaAI
+from metaai_api import MetaAI
 
 ai = MetaAI()
 
@@ -226,7 +226,7 @@ Q3: The capital of France is Paris, located in the...
 Route your requests through a proxy:
 
 ```python
-from meta_ai_api import MetaAI
+from metaai_api import MetaAI
 
 # Configure proxy
 proxy = {
@@ -256,7 +256,7 @@ Create AI-generated videos from text descriptions!
 ### Example 1: Generate Your First Video
 
 ```python
-from meta_ai_api import MetaAI
+from metaai_api import MetaAI
 
 # Your browser cookies
 cookies = {
@@ -309,7 +309,7 @@ else:
 ### Example 2: Generate Multiple Videos
 
 ```python
-from meta_ai_api import MetaAI
+from metaai_api import MetaAI
 import time
 
 ai = MetaAI(cookies=cookies)
@@ -354,7 +354,7 @@ print(f"\n🎉 Generated {len(videos)} videos successfully!")
 ### Example 3: Advanced Video Generation
 
 ```python
-from meta_ai_api import MetaAI
+from metaai_api import MetaAI
 
 ai = MetaAI(cookies=cookies)
 
@@ -384,7 +384,7 @@ if result["success"]:
 Generate AI-powered images (requires Facebook authentication):
 
 ```python
-from meta_ai_api import MetaAI
+from metaai_api import MetaAI
 
 # Initialize with Facebook credentials
 ai = MetaAI(fb_email="your_email@example.com", fb_password="your_password")
@@ -486,7 +486,7 @@ class MetaAI:
 #### VideoGenerator Class
 
 ```python
-from meta_ai_api import VideoGenerator
+from metaai_api import VideoGenerator
 
 # Direct video generation
 generator = VideoGenerator(cookies_str="your_cookies_as_string")
@@ -574,7 +574,7 @@ Load in Python:
 ```python
 import os
 from dotenv import load_dotenv
-from meta_ai_api import MetaAI
+from metaai_api import MetaAI
 
 load_dotenv()
 
@@ -591,7 +591,7 @@ ai = MetaAI(cookies=cookies)
 ### Error Handling
 
 ```python
-from meta_ai_api import MetaAI
+from metaai_api import MetaAI
 
 ai = MetaAI(cookies=cookies)
 
@@ -618,7 +618,7 @@ except Exception as e:
 ```
 meta-ai-python/
 │
-├── 📁 src/meta_ai_api/        # Core package
+├── 📁 src/metaai_api/        # Core package
 │   ├── __init__.py            # Package initialization
 │   ├── main.py                # MetaAI class
 │   ├── video_generation.py    # Video generation

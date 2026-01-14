@@ -9,8 +9,8 @@
 pip install metaai-api
 
 # Or install from source
-git clone https://github.com/mir-ashiq/meta-ai-python.git
-cd meta-ai-python
+git clone https://github.com/mir-ashiq/metaai-api.git
+cd metaai-api
 pip install -e .
 ```
 
@@ -40,7 +40,7 @@ response = ai.prompt("Hello", new_conversation=True)
 ## 🎬 Video Generation
 
 ```python
-from meta_ai_api import MetaAI
+from metaai_api import MetaAI
 
 # Your cookies
 cookies = {
@@ -78,7 +78,7 @@ result = ai.generate_video(
 ## 🎨 Image Generation
 
 ```python
-from meta_ai_api import MetaAI
+from metaai_api import MetaAI
 
 # Requires FB credentials
 ai = MetaAI(fb_email="email@example.com", fb_password="password")

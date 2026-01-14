@@ -36,7 +36,7 @@ pip install metaai_api
 ## Quick Start
 
 ```python
-from meta_ai_api import MetaAI
+from metaai_api import MetaAI
 
 # Initialize
 ai = MetaAI()

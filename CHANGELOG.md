@@ -109,7 +109,7 @@ First stable release of the Meta AI Python SDK with comprehensive features for M
 
 ```python
 # New in v2.0
-from meta_ai_api import MetaAI
+from metaai_api import MetaAI
 
 ai = MetaAI(cookies=cookies)
 result = ai.generate_video("Generate a video of a sunset")

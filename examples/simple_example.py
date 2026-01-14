@@ -2,8 +2,8 @@ from metaai_api import MetaAI
 
 # Your cookies from browser (lsd and fb_dtsg are auto-fetched!)
 cookies = {
-    "datr": "XTAgaawpytHjE5u298papd-E",
-    "abra_sess": "FrKF8dSY%2FfECFkAYDjRPcnBwYkxPNmFkTGlRFqzTgZINAA%3D%3D",
+    "datr": "-5pnaePoirB_Y94nHinFXSBj",
+    "abra_sess": "FrKF8dSY%2FfECFloYDm9yLVZKdW5VVVJVak13FqbuvJYNAA%3D%3D",
     "dpr": "1.25",
     "wd": "1536x443"
 }

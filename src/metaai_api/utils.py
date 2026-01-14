@@ -64,7 +64,7 @@ def format_response(response: dict) -> str:
     Formats the response from Meta AI to remove unnecessary characters.
 
     Args:
-        response (dict): The dictionnary containing the response to format.
+        response (dict): The dictionary containing the response to format.
 
     Returns:
         str: The formatted response.
