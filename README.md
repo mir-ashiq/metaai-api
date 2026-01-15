@@ -71,7 +71,7 @@ All in one SDK
 For using Meta AI as a Python library:
 
 ```bash
-pip install metaai-api
+pip install metaai-sdk
 ```
 
 ### SDK + API Server
@@ -79,7 +79,7 @@ pip install metaai-api
 For deploying as a REST API service:
 
 ```bash
-pip install metaai-api[api]
+pip install metaai-sdk[api]
 ```
 
 ### From Source
@@ -263,7 +263,7 @@ Deploy Meta AI as a REST API service that anyone can use! The API server auto-re
 ### Installation
 
 ```bash
-pip install metaai-api[api]
+pip install metaai-sdk[api]
 ```
 
 ### Setup
@@ -460,7 +460,7 @@ if result["success"]:
     print(f"⏱️ Generated at: {result['timestamp']}")
 ```
 
-📖 **Full Video Guide:** See [VIDEO_GENERATION_README.md](VIDEO_GENERATION_README.md) for complete documentation!
+📖 **Full Video Guide:** See [VIDEO_GENERATION_README.md](https://github.com/mir-ashiq/metaai-api/blob/main/VIDEO_GENERATION_README.md) for complete documentation!
 
 ---
 
@@ -517,7 +517,7 @@ Explore working examples in the `examples/` directory:
 
 ```bash
 # Clone the repository
-git clone https://github.com/mir-ashiq/meta-ai-python.git
+git clone https://github.com/mir-ashiq/metaai-api.git
 cd meta-ai-python
 
 # Run simple example
@@ -739,7 +739,7 @@ meta-ai-python/
 
 We welcome contributions! Here's how you can help:
 
-1. **🐛 Report Bugs** - [Open an issue](https://github.com/mir-ashiq/meta-ai-python/issues)
+1. **🐛 Report Bugs** - [Open an issue](https://github.com/mir-ashiq/metaai-api/issues)
 2. **💡 Suggest Features** - Share your ideas
 3. **📝 Improve Docs** - Help us document better
 4. **🔧 Submit PRs** - Fix bugs or add features
@@ -775,10 +775,10 @@ This project is an **independent implementation** and is **not officially affili
 
 ## 📞 Support & Community
 
-- 💬 **Questions?** [GitHub Discussions](https://github.com/mir-ashiq/meta-ai-python/discussions)
-- 🐛 **Bug Reports** [GitHub Issues](https://github.com/mir-ashiq/meta-ai-python/issues)
-- 📧 **Contact** contact@meta-ai-sdk.dev
-- ⭐ **Star us** on [GitHub](https://github.com/mir-ashiq/meta-ai-python)
+- 💬 **Questions?** [GitHub Discussions](https://github.com/mir-ashiq/metaai-api/discussions)
+- 🐛 **Bug Reports** [GitHub Issues](https://github.com/mir-ashiq/metaai-api/issues)
+- 📧 **Contact** imseldrith@gmail.com
+- ⭐ **Star us** on [GitHub](https://github.com/mir-ashiq/metaai-api)
 
 ---
 
@@ -786,12 +786,12 @@ This project is an **independent implementation** and is **not officially affili
 
 <div align="center">
 
-| Resource                  | Link                                                                                                                                  |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| 📦 **PyPI Package**       | [pypi.org/project/metaai_api](https://pypi.org/project/metaai_api/)                                                                   |
-| 🐙 **GitHub Repository**  | [github.com/mir-ashiq/meta-ai-python](https://github.com/mir-ashiq/meta-ai-python)                                                    |
-| 📖 **Full Documentation** | [Video Guide](VIDEO_GENERATION_README.md) • [Quick Ref](QUICK_REFERENCE.md)                                                           |
-| 💬 **Get Help**           | [Issues](https://github.com/mir-ashiq/meta-ai-python/issues) • [Discussions](https://github.com/mir-ashiq/meta-ai-python/discussions) |
+| Resource                  | Link                                                                                                                          |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| 📦 **PyPI Package**       | [pypi.org/project/metaai_api](https://pypi.org/project/metaai_api/)                                                           |
+| 🐙 **GitHub Repository**  | [github.com/mir-ashiq/meta-ai-python](https://github.com/mir-ashiq/metaai-api)                                                |
+| 📖 **Full Documentation** | [Video Guide](VIDEO_GENERATION_README.md) • [Quick Ref](QUICK_REFERENCE.md)                                                   |
+| 💬 **Get Help**           | [Issues](https://github.com/mir-ashiq/metaai-api/issues) • [Discussions](https://github.com/mir-ashiq/metaai-api/discussions) |
 
 ---
 

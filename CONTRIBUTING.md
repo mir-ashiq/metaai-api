@@ -273,7 +273,7 @@ We're especially interested in contributions for:
 - **General questions**: Open a GitHub Discussion
 - **Bug reports**: Create an issue with bug template
 - **Feature requests**: Create an issue with feature template
-- **Security issues**: Email contact@meta-ai-sdk.dev
+- **Security issues**: Email imseldrith@gmail.com
 
 ## 🌟 Recognition
 

@@ -7,7 +7,7 @@ requests-html>=0.10.0
 lxml-html-clean>=0.1.1
 beautifulsoup4>=4.9.0
 
-# API Server dependencies (optional - install with: pip install metaai-api[api])
+# API Server dependencies (optional - install with: pip install metaai-sdk[api])
 # Uncomment below if you want to install API dependencies manually:
 # fastapi>=0.95.2,<0.96.0
 # uvicorn[standard]>=0.22.0,<0.24.0

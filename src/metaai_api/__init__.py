@@ -8,9 +8,9 @@ A modern, feature-rich Python SDK providing seamless access to Meta AI's capabil
 """
 
 __version__ = "2.0.0"
-__author__ = "Meta AI SDK Team"
+__author__ = "Ashiq Hussain Mir"
 __license__ = "MIT"
-__url__ = "https://github.com/mir-ashiq/meta-ai-python"
+__url__ = "https://github.com/mir-ashiq/metaai-api"
 
 from .main import MetaAI  # noqa
 from .client import send_animate_request

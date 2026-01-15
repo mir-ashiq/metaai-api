@@ -6,7 +6,7 @@
 
 ```bash
 # Install from PyPI
-pip install metaai-api
+pip install metaai-sdk
 
 # Or install from source
 git clone https://github.com/mir-ashiq/metaai-api.git
@@ -222,7 +222,7 @@ except Exception as e:
 
 ## 🔗 Links
 
-- **GitHub**: [mir-ashiq/meta-ai-python](https://github.com/mir-ashiq/meta-ai-python)
+- **GitHub**: [mir-ashiq/meta-ai-python](https://github.com/mir-ashiq/metaai-api)
 - **PyPI**: [metaai-api](https://pypi.org/project/metaai-api/)
 - **Documentation**: [README.md](README.md)
 - **Changelog**: [CHANGELOG.md](CHANGELOG.md)

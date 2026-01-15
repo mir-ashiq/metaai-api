@@ -7,7 +7,7 @@ This guide explains how to deploy the Meta AI API server for production use.
 ### 1. Install with API Dependencies
 
 ```bash
-pip install metaai-api[api]
+pip install metaai-sdk[api]
 ```
 
 ### 2. Configure Environment

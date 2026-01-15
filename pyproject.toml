@@ -1,19 +1,18 @@
 [build-system]
-requires = ["setuptools>=45", "wheel", "setuptools_scm>=6.2"]
+requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "metaai-api"
-version = "2.0.0"
+name = "metaai-sdk"
+version = "2.0.1"
 description = "Feature-rich Python SDK for Meta AI - Chat, Image & Video Generation powered by Llama 3"
-authors = [{name = "Meta AI SDK Team", email = "contact@meta-ai-sdk.dev"}]
+authors = [{name = "Ashiq Hussain Mir", email = "imseldrith@gmail.com"}]
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
 keywords = ["metaai", "meta-ai", "llama3", "ai", "llm", "video-generation", "chatbot"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.7",
     "Programming Language :: Python :: 3.8",
@@ -31,10 +30,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/mir-ashiq/meta-ai-python"
-Documentation = "https://github.com/mir-ashiq/meta-ai-python/blob/main/README.md"
-Repository = "https://github.com/mir-ashiq/meta-ai-python"
-Changelog = "https://github.com/mir-ashiq/meta-ai-python/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/mir-ashiq/metaai-api"
+Documentation = "https://github.com/mir-ashiq/metaai-api/blob/main/README.md"
+Repository = "https://github.com/mir-ashiq/metaai-api"
+Changelog = "https://github.com/mir-ashiq/metaai-api/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 api = [
@@ -49,16 +48,3 @@ dev = [
     "black",
     "flake8",
 ]
-
-[tool.poetry.dependencies]
-python = "^3.7"
-requests = "2.31.0"
-requests-html = "0.10.0"
-lxml-html-clean = "0.1.1"
-bs4 = "0.0.2"
-
-[tool.poetry.extras]
-api = ["fastapi", "uvicorn", "python-multipart", "python-dotenv"]
-
-[build]
-script = "build.py"
