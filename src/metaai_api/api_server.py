@@ -5,7 +5,7 @@ import os
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
@@ -100,6 +100,11 @@ class ChatRequest(BaseModel):
     new_conversation: bool = False
 
 
+class ImageRequest(BaseModel):
+    prompt: str
+    new_conversation: bool = False
+
+
 class VideoRequest(BaseModel):
     prompt: str
     wait_before_poll: int = Field(10, ge=0, le=60)
@@ -185,7 +190,17 @@ async def chat(body: ChatRequest, cookies: Dict[str, str] = Depends(get_cookies)
         raise HTTPException(status_code=400, detail="Streaming not supported via HTTP JSON; set stream=false")
     ai = MetaAI(cookies=cookies, proxy=_get_proxies())
     try:
-        return ai.prompt(body.message, stream=False, new_conversation=body.new_conversation)
+        return cast(Dict[str, Any], ai.prompt(body.message, stream=False, new_conversation=body.new_conversation))
+    except Exception as exc:  # noqa: BLE001
+        await cache.refresh_after_error()
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/image")
+async def image(body: ImageRequest, cookies: Dict[str, str] = Depends(get_cookies)) -> Dict[str, Any]:
+    ai = MetaAI(cookies=cookies, proxy=_get_proxies())
+    try:
+        return cast(Dict[str, Any], ai.prompt(body.prompt, stream=False, new_conversation=body.new_conversation))
     except Exception as exc:  # noqa: BLE001
         await cache.refresh_after_error()
         raise HTTPException(status_code=502, detail=str(exc)) from exc

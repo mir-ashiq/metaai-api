@@ -80,6 +80,34 @@ Content-Type: application/json
 }
 ```
 
+### Image Generation
+
+```bash
+POST /image
+Content-Type: application/json
+
+{
+  "prompt": "A photorealistic cat wearing sunglasses",
+  "new_conversation": false
+}
+```
+
+**Response:**
+
+```json
+{
+  "message": "AI response text",
+  "sources": [],
+  "media": [
+    {
+      "url": "https://...",
+      "type": "IMAGE",
+      "prompt": "A photorealistic cat wearing sunglasses"
+    }
+  ]
+}
+```
+
 ### Video Generation (Synchronous)
 
 Blocks until video is ready or timeout.

@@ -290,6 +290,7 @@ uvicorn metaai_api.api_server:app --host 0.0.0.0 --port 8000
 | Endpoint               | Method | Description                            |
 | ---------------------- | ------ | -------------------------------------- |
 | `/chat`                | POST   | Send chat messages                     |
+| `/image`               | POST   | Generate images                        |
 | `/video`               | POST   | Generate video (blocks until complete) |
 | `/video/async`         | POST   | Start async video generation           |
 | `/video/jobs/{job_id}` | GET    | Poll async job status                  |
@@ -306,6 +307,13 @@ response = requests.post("http://localhost:8000/chat", json={
     "stream": False
 })
 print(response.json())
+
+# Image generation
+images = requests.post("http://localhost:8000/image", json={
+    "prompt": "Cyberpunk cityscape at night",
+    "new_conversation": False
+})
+print(images.json())
 
 # Async video generation
 job = requests.post("http://localhost:8000/video/async", json={

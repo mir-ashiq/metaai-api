@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="metaai-sdk",
-    version="2.0.1",
+    version="2.1.1",
     author="Ashiq Hussain Mir",
     author_email="imseldrith@gmail.com",
     description="Feature-rich Python SDK for Meta AI - Chat, Image & Video Generation powered by Llama 3",
