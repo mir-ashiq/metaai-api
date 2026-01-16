@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "metaai-sdk"
-version = "2.1.1"
+version = "2.2.1"
 description = "Feature-rich Python SDK for Meta AI - Chat, Image & Video Generation powered by Llama 3"
 authors = [{name = "Ashiq Hussain Mir", email = "imseldrith@gmail.com"}]
 readme = "README.md"
