@@ -308,9 +308,11 @@ async def health() -> Dict[str, str]:
 
 
 async def _run_video_job(job_id: str, body: VideoRequest, cookies: Dict[str, str]) -> None:
+    logger.info(f"[JOB {job_id}] Starting video generation job")
     await jobs.set_running(job_id)
     ai = MetaAI(cookies=cookies, proxy=_get_proxies())
     try:
+        logger.info(f"[JOB {job_id}] Calling generate_video with prompt: {body.prompt[:100]}...")
         result = await run_in_threadpool(
             ai.generate_video,
             body.prompt,
@@ -321,8 +323,30 @@ async def _run_video_job(job_id: str, body: VideoRequest, cookies: Dict[str, str
             body.wait_seconds,
             body.verbose,
         )
-        await jobs.set_result(job_id, result)
+        
+        logger.info(f"[JOB {job_id}] Video generation completed")
+        logger.info(f"[JOB {job_id}] Result success: {result.get('success', False)}")
+        logger.info(f"[JOB {job_id}] Video URLs count: {len(result.get('video_urls', []))}")
+        
+        # Check if video generation actually succeeded AND we have video URLs
+        video_urls = result.get('video_urls', [])
+        if result.get('success', False) and video_urls and len(video_urls) > 0:
+            logger.info(f"[JOB {job_id}] Marking as SUCCEEDED with {len(video_urls)} video(s)")
+            for idx, url in enumerate(video_urls, 1):
+                logger.info(f"[JOB {job_id}] Video URL {idx}: {url[:150]}...")
+            await jobs.set_result(job_id, result)
+        else:
+            # Video generation failed or no videos generated - mark job as failed
+            if not result.get('success', False):
+                error_msg = result.get('error', 'Video generation failed')
+                logger.warning(f"[JOB {job_id}] Marking as FAILED: {error_msg}")
+            else:
+                error_msg = 'Video generation completed but no video URLs were found. The video may still be processing or the extraction failed.'
+                logger.warning(f"[JOB {job_id}] Marking as FAILED: Success=true but no URLs found")
+                logger.debug(f"[JOB {job_id}] Full result: {result}")
+            await jobs.set_error(job_id, error_msg)
     except Exception as exc:  # noqa: BLE001
+        logger.error(f"[JOB {job_id}] Exception occurred: {exc}", exc_info=True)
         await cache.refresh_after_error()
         await jobs.set_error(job_id, str(exc))
 

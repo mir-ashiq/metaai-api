@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=61", "wheel"]
+requires = ["setuptools>=61", "setuptools_scm"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "metaai-sdk"
-version = "2.2.1"
+dynamic = ["version"]
 description = "Feature-rich Python SDK for Meta AI - Chat, Image & Video Generation powered by Llama 3"
 authors = [{name = "Ashiq Hussain Mir", email = "imseldrith@gmail.com"}]
 readme = "README.md"
@@ -49,3 +49,6 @@ dev = [
     "black",
     "flake8",
 ]
+[tool.setuptools_scm]
+version_scheme = "release"
+local_scheme = "no-local-version"
