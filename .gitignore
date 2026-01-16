@@ -27,6 +27,7 @@ share/python-wheels/
 *.egg
 MANIFEST
 .env
+.pypirc
 
 # PyInstaller
 *.manifest
@@ -77,12 +78,21 @@ sou*.txt
 chatgpt*.py
 g.py
 response_*.json
+response_*.txt
 video_generation_*.json
 source.html
 html_content.html
+debug_responses/
+debug_response.py
+node_modules/
+yarn.lock
 
 # Keep example files
 !examples/*.py
+
+# Keep test suite
+!test_endpoints.py
+!test_image_upload.py
 
 # Keep documentation
 !*.md

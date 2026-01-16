@@ -62,6 +62,7 @@ def extract_value(text: str, start_str: str, end_str: str) -> str:
 def format_response(response: dict) -> str:
     """
     Formats the response from Meta AI to remove unnecessary characters.
+    Handles both Abra and Kadabra response structures.
 
     Args:
         response (dict): The dictionary containing the response to format.
@@ -70,15 +71,51 @@ def format_response(response: dict) -> str:
         str: The formatted response.
     """
     text = ""
-    for content in (
+    
+    # Try to get bot_response_message
+    bot_response = (
         response.get("data", {})
         .get("node", {})
         .get("bot_response_message", {})
-        .get("composed_text", {})
-        .get("content", [])
-    ):
-        text += content["text"] + "\n"
-    return text
+    )
+    
+    # Try standard composed_text structure (Abra)
+    content_list = bot_response.get("composed_text", {}).get("content", [])
+    
+    if content_list:
+        for content in content_list:
+            if isinstance(content, dict) and "text" in content:
+                text += content["text"] + "\n"
+    else:
+        # Try multi-step response structure (agent responses with uploaded images)
+        content = bot_response.get("content", {})
+        if content:
+            agent_steps = content.get("agent_steps", [])
+            if agent_steps:
+                for step in agent_steps:
+                    composed_text = step.get("composed_text", {})
+                    step_content = composed_text.get("content", [])
+                    for item in step_content:
+                        if isinstance(item, dict) and "text" in item:
+                            text += item["text"] + "\n"
+        
+        # If still no text, try alternative structures for Kadabra responses
+        if not text:
+            # Check for direct text field
+            if "text" in bot_response:
+                text = bot_response["text"]
+            # Check for streaming_text
+            elif "streaming_text" in bot_response:
+                text = bot_response["streaming_text"]
+            # Check for message field
+            elif "message" in bot_response:
+                msg = bot_response["message"]
+                if isinstance(msg, str):
+                    text = msg
+                elif isinstance(msg, dict) and "text" in msg:
+                    text = msg["text"]
+    
+    return text.strip()
 
 
 # Function to perform the login

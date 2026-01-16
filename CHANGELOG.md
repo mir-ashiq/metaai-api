@@ -5,6 +5,85 @@ All notable changes to Meta AI Python SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-01-16
+
+### 🎉 Image Upload & Enhanced Features
+
+Major update adding comprehensive image upload support with analysis, generation, and video creation capabilities.
+
+### Added
+
+- 📤 **Image Upload Support** - Upload images for AI processing
+
+  - New `upload_image()` method in `MetaAI` class
+  - `ImageUploader` class using Meta's rupload protocol
+  - UUID-based upload session management
+  - Automatic MIME type detection and file size tracking
+  - Returns `media_id` for use in subsequent operations
+
+- 🔍 **Image Analysis** - Analyze and describe uploaded images
+
+  - Chat endpoint now accepts `media_ids` parameter
+  - Support for `attachment_metadata` (file_size, mime_type)
+  - Multi-step agent response parsing for detailed descriptions
+  - Entrypoint routing (KADABRA**DISCOVER**UNIFIED_INPUT_BAR)
+
+- 🎨 **Similar Image Generation** - Create variations of uploaded images
+
+  - Generate similar images in different styles
+  - Extract URLs from `content.imagine.session.media_sets`
+  - Support for 4 simultaneous image generations
+  - Fallback URL field checking (uri, image_uri, maybe_image_uri, url)
+
+- 🎬 **Video from Images** - Animate uploaded static images
+
+  - Video generation now accepts uploaded image media_ids
+  - Full `attachment_metadata` support
+  - Integration with existing `VideoGenerator` class
+
+- 🔧 **Response Parser Enhancements**
+
+  - Enhanced `format_response()` for multi-step agent responses
+  - Updated `extract_media()` with primary/fallback location checking
+  - Improved `extract_data()` with Kadabra structure support
+  - Added support for `XFBAbraMessageMultiStepResponseContent`
+
+- 📚 **Comprehensive Documentation**
+
+  - Complete image upload guide (`IMAGE_UPLOAD_README.md`)
+  - Updated quick usage guide (`QUICK_USAGE.md`)
+  - New complete workflow example (`examples/image_workflow_complete.py`)
+  - API reference with all three use cases
+  - Working curl and Python examples
+
+- 🧪 **Testing & Validation**
+  - Comprehensive test suite (`test_endpoints.py`)
+  - End-to-end workflow validation
+  - All features tested and confirmed working
+
+### Changed
+
+- ♻️ Enhanced `MetaAI.prompt()` to support image attachments
+- 🔄 Updated `MetaAI.generate_video()` with image support
+- 📖 Updated main README with image upload section
+- 🏗️ Refactored response parsing for better structure handling
+- 🎯 Improved entrypoint selection logic (ABRA vs KADABRA)
+
+### Fixed
+
+- 🐛 Fixed empty responses for chat with uploaded images
+- 🐛 Fixed None URLs in image generation responses
+- 🐛 Fixed response parsing for Kadabra structures
+- 🐛 Fixed media extraction from nested content structures
+
+### Technical Details
+
+- Uses Meta's rupload protocol for image uploads
+- Proper GraphQL mutation selection (useKadabraSendMessageMutation)
+- Correct doc_id routing (34429318783334028 for Kadabra)
+- messagePersistentInput with attachment_size (bytes) and attachment_type (MIME)
+- Multi-path response parsing (Abra and Kadabra structures)
+
 ## [2.0.0] - 2025-11-22
 
 ### 🎉 Initial Release

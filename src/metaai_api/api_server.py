@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, cast
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
@@ -98,19 +98,35 @@ class ChatRequest(BaseModel):
     message: str
     stream: bool = False
     new_conversation: bool = False
+    media_ids: Optional[list] = None
+    attachment_metadata: Optional[dict] = None  # {'file_size': int, 'mime_type': str}
 
 
 class ImageRequest(BaseModel):
     prompt: str
     new_conversation: bool = False
+    media_ids: Optional[list] = None
+    attachment_metadata: Optional[dict] = None  # {'file_size': int, 'mime_type': str}
 
 
 class VideoRequest(BaseModel):
     prompt: str
+    media_ids: Optional[list] = None
+    attachment_metadata: Optional[dict] = None  # {'file_size': int, 'mime_type': str}
     wait_before_poll: int = Field(10, ge=0, le=60)
     max_attempts: int = Field(30, ge=1, le=60)
     wait_seconds: int = Field(5, ge=1, le=30)
     verbose: bool = False
+
+
+class ImageUploadResponse(BaseModel):
+    success: bool
+    media_id: Optional[str] = None
+    upload_session_id: Optional[str] = None
+    file_name: Optional[str] = None
+    file_size: Optional[int] = None
+    mime_type: Optional[str] = None
+    error: Optional[str] = None
 
 
 class JobStatus(BaseModel):
@@ -190,7 +206,7 @@ async def chat(body: ChatRequest, cookies: Dict[str, str] = Depends(get_cookies)
         raise HTTPException(status_code=400, detail="Streaming not supported via HTTP JSON; set stream=false")
     ai = MetaAI(cookies=cookies, proxy=_get_proxies())
     try:
-        return cast(Dict[str, Any], ai.prompt(body.message, stream=False, new_conversation=body.new_conversation))
+        return cast(Dict[str, Any], ai.prompt(body.message, stream=False, new_conversation=body.new_conversation, media_ids=body.media_ids, attachment_metadata=body.attachment_metadata))
     except Exception as exc:  # noqa: BLE001
         await cache.refresh_after_error()
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -200,7 +216,14 @@ async def chat(body: ChatRequest, cookies: Dict[str, str] = Depends(get_cookies)
 async def image(body: ImageRequest, cookies: Dict[str, str] = Depends(get_cookies)) -> Dict[str, Any]:
     ai = MetaAI(cookies=cookies, proxy=_get_proxies())
     try:
-        return cast(Dict[str, Any], ai.prompt(body.prompt, stream=False, new_conversation=body.new_conversation))
+        return cast(Dict[str, Any], ai.prompt(
+            body.prompt, 
+            stream=False, 
+            new_conversation=body.new_conversation, 
+            media_ids=body.media_ids, 
+            attachment_metadata=body.attachment_metadata,
+            is_image_generation=True  # Image generation uses DISCOVER entrypoint
+        ))
     except Exception as exc:  # noqa: BLE001
         await cache.refresh_after_error()
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -213,6 +236,8 @@ async def video(body: VideoRequest, cookies: Dict[str, str] = Depends(get_cookie
         return await run_in_threadpool(
             ai.generate_video,
             body.prompt,
+            body.media_ids,
+            body.attachment_metadata,
             body.wait_before_poll,
             body.max_attempts,
             body.wait_seconds,
@@ -239,6 +264,44 @@ async def video_job_status(job_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail="Job not found")
 
 
+@app.post("/upload")
+async def upload_image(
+    file: UploadFile = File(...),
+    cookies: Dict[str, str] = Depends(get_cookies)
+) -> Dict[str, Any]:
+    """Upload an image to Meta AI for use in conversations or media generation."""
+    import tempfile
+    import os
+    
+    # Create temporary file to save the upload
+    temp_dir = tempfile.gettempdir()
+    temp_path = os.path.join(temp_dir, f"metaai_upload_{uuid.uuid4()}_{file.filename}")
+    
+    try:
+        # Save uploaded file to temporary location
+        content = await file.read()
+        with open(temp_path, 'wb') as f:
+            f.write(content)
+        
+        # Initialize MetaAI with cookies and upload
+        ai = MetaAI(cookies=cookies, proxy=_get_proxies())
+        result = await run_in_threadpool(ai.upload_image, temp_path)
+        
+        return cast(Dict[str, Any], result)
+    
+    except Exception as exc:  # noqa: BLE001
+        await cache.refresh_after_error()
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    
+    finally:
+        # Clean up temporary file
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:  # noqa: BLE001
+                pass
+
+
 @app.get("/healthz")
 async def health() -> Dict[str, str]:
     return {"status": "ok"}
@@ -251,6 +314,8 @@ async def _run_video_job(job_id: str, body: VideoRequest, cookies: Dict[str, str
         result = await run_in_threadpool(
             ai.generate_video,
             body.prompt,
+            body.media_ids,
+            body.attachment_metadata,
             body.wait_before_poll,
             body.max_attempts,
             body.wait_seconds,

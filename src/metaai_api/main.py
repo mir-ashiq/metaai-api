@@ -3,7 +3,7 @@ import logging
 import time
 import urllib.parse
 import uuid
-from typing import Dict, List, Generator, Iterator, Optional, Union
+from typing import Dict, List, Generator, Iterator, Optional, Union, Any
 
 import requests
 from requests_html import HTMLSession
@@ -17,6 +17,7 @@ from metaai_api.utils import (
 from metaai_api.utils import get_fb_session, get_session
 
 from metaai_api.exceptions import FacebookRegionBlocked
+from metaai_api.image_upload import ImageUploader
 
 MAX_RETRIES = 3
 
@@ -137,6 +138,9 @@ class MetaAI:
         attempts: int = 0,
         new_conversation: bool = False,
         images: Optional[list] = None,
+        media_ids: Optional[list] = None,
+        attachment_metadata: Optional[Dict[str, Any]] = None,
+        is_image_generation: bool = False,
     ) -> Union[Dict, Generator[Dict, None, None]]:
         """
         Sends a message to the Meta AI and returns the response.
@@ -147,6 +151,9 @@ class MetaAI:
             attempts (int): The number of attempts to retry if an error occurs. Defaults to 0.
             new_conversation (bool): Whether to start a new conversation or not. Defaults to False.
             images (list): List of image URLs to animate (for video generation). Defaults to None.
+            media_ids (list): List of media IDs from uploaded images to include in the prompt. Defaults to None.
+            attachment_metadata (dict): Optional dict with 'file_size' (int) and 'mime_type' (str). Defaults to None.
+            is_image_generation (bool): Whether this is for image generation (vs chat). Defaults to False.
 
         Returns:
             dict: A dictionary containing the response message and sources.
@@ -172,32 +179,62 @@ class MetaAI:
         if images:
             flash_video_input = {"images": images}
         
+        # Handle uploaded media attachments
+        attachments_v2 = []
+        if media_ids:
+            attachments_v2 = [str(mid) for mid in media_ids]
+        
+        # Generate offline threading IDs
+        offline_threading_id = generate_offline_threading_id()
+        
+        # Determine entrypoint based on context
+        if images:
+            # Video generation with images uses CHAT
+            entrypoint = "KADABRA__CHAT__UNIFIED_INPUT_BAR"
+        elif media_ids:
+            # Any uploaded image use (chat analysis or image generation) uses DISCOVER
+            entrypoint = "KADABRA__DISCOVER__UNIFIED_INPUT_BAR"
+        else:
+            entrypoint = "ABRA__CHAT__TEXT"
+        
+        # Set friendly name based on entrypoint
+        friendly_name = "useKadabraSendMessageMutation" if entrypoint.startswith("KADABRA") else "useAbraSendMessageMutation"
+        
         payload = {
             **auth_payload,
             "fb_api_caller_class": "RelayModern",
-            "fb_api_req_friendly_name": "useAbraSendMessageMutation",
+            "fb_api_req_friendly_name": friendly_name,
             "variables": json.dumps(
                 {
                     "message": {"sensitive_string_value": message},
                     "externalConversationId": self.external_conversation_id,
-                    "offlineThreadingId": generate_offline_threading_id(),
+                    "offlineThreadingId": offline_threading_id,
                     "suggestedPromptIndex": None,
                     "flashVideoRecapInput": flash_video_input,
                     "flashPreviewInput": None,
                     "promptPrefix": None,
-                    "entrypoint": "ABRA__CHAT__TEXT",
+                    "entrypoint": entrypoint,
+                    "attachments": [],
+                    "attachmentsV2": attachments_v2,
+                    "messagePersistentInput": {
+                        "attachment_size": attachment_metadata.get('file_size') if attachment_metadata else None,
+                        "attachment_type": attachment_metadata.get('mime_type') if attachment_metadata else None,
+                        "external_conversation_id": self.external_conversation_id,
+                        "offline_threading_id": offline_threading_id,
+                        "meta_ai_entry_point": entrypoint,
+                    } if media_ids else None,
                     "icebreaker_type": "TEXT",
                     "__relay_internal__pv__AbraDebugDevOnlyrelayprovider": False,
                     "__relay_internal__pv__WebPixelRatiorelayprovider": 1,
                 }
             ),
             "server_timestamps": "true",
-            "doc_id": "7783822248314888",
+            "doc_id": "34429318783334028" if entrypoint.startswith("KADABRA") else "7783822248314888",
         }
         payload = urllib.parse.urlencode(payload)  # noqa
         headers = {
             "content-type": "application/x-www-form-urlencoded",
-            "x-fb-friendly-name": "useAbraSendMessageMutation",
+            "x-fb-friendly-name": friendly_name,
         }
         if self.is_authed:
             headers["cookie"] = f'abra_sess={self.cookies["abra_sess"]}'
@@ -211,7 +248,7 @@ class MetaAI:
             raw_response = response.text
             last_streamed_response = self.extract_last_response(raw_response)
             if not last_streamed_response:
-                return self.retry(message, stream=stream, attempts=attempts)
+                return self.retry(message, stream=stream, attempts=attempts, media_ids=media_ids, attachment_metadata=attachment_metadata, is_image_generation=is_image_generation)
 
             extracted_data = self.extract_data(last_streamed_response)
             return extracted_data
@@ -220,10 +257,10 @@ class MetaAI:
             lines = response.iter_lines()
             is_error = json.loads(next(lines))
             if len(is_error.get("errors", [])) > 0:
-                return self.retry(message, stream=stream, attempts=attempts)
+                return self.retry(message, stream=stream, attempts=attempts, media_ids=media_ids, attachment_metadata=attachment_metadata, is_image_generation=is_image_generation)
             return self.stream_response(lines)
 
-    def retry(self, message: str, stream: bool = False, attempts: int = 0):
+    def retry(self, message: str, stream: bool = False, attempts: int = 0, media_ids: Optional[list] = None, attachment_metadata: Optional[Dict[str, Any]] = None, is_image_generation: bool = False):
         """
         Retries the prompt function if an error occurs.
         """
@@ -232,7 +269,7 @@ class MetaAI:
                 f"Was unable to obtain a valid response from Meta AI. Retrying... Attempt {attempts + 1}/{MAX_RETRIES}."
             )
             time.sleep(3)
-            return self.prompt(message, stream=stream, attempts=attempts + 1)
+            return self.prompt(message, stream=stream, attempts=attempts + 1, media_ids=media_ids, attachment_metadata=attachment_metadata, is_image_generation=is_image_generation)
         else:
             raise Exception(
                 "Unable to obtain a valid response from Meta AI. Try again later."
@@ -241,6 +278,7 @@ class MetaAI:
     def extract_last_response(self, response: str) -> Optional[Dict]:
         """
         Extracts the last response from the Meta AI API.
+        Handles both Abra and Kadabra response structures.
 
         Args:
             response (str): The response to extract the last response from.
@@ -249,26 +287,54 @@ class MetaAI:
             dict: A dictionary containing the last response.
         """
         last_streamed_response = None
+        all_responses = []
+        
         for line in response.split("\n"):
             try:
                 json_line = json.loads(line)
             except json.JSONDecodeError:
                 continue
 
+            # Store all valid JSON responses
+            all_responses.append(json_line)
+            
             bot_response_message = (
                 json_line.get("data", {})
                 .get("node", {})
                 .get("bot_response_message", {})
             )
+            
+            if not bot_response_message:
+                # Try alternative structure for Kadabra
+                bot_response_message = (
+                    json_line.get("data", {})
+                    .get("message", {})
+                )
+            
             chat_id = bot_response_message.get("id")
             if chat_id:
-                external_conversation_id, offline_threading_id, _ = chat_id.split("_")
-                self.external_conversation_id = external_conversation_id
-                self.offline_threading_id = offline_threading_id
+                try:
+                    external_conversation_id, offline_threading_id, _ = chat_id.split("_")
+                    self.external_conversation_id = external_conversation_id
+                    self.offline_threading_id = offline_threading_id
+                except:
+                    pass
 
             streaming_state = bot_response_message.get("streaming_state")
             if streaming_state == "OVERALL_DONE":
                 last_streamed_response = json_line
+        
+        # If no OVERALL_DONE found, use the last non-empty response
+        if not last_streamed_response and all_responses:
+            # Find last response with actual content
+            for resp in reversed(all_responses):
+                if resp.get("data", {}).get("node", {}).get("bot_response_message", {}):
+                    last_streamed_response = resp
+                    break
+                elif resp.get("data", {}).get("message", {}):
+                    # Kadabra structure
+                    last_streamed_response = resp
+                    break
 
         return last_streamed_response
 
@@ -293,6 +359,7 @@ class MetaAI:
     def extract_data(self, json_line: dict):
         """
         Extract data and sources from a parsed JSON line.
+        Handles both Abra and Kadabra response structures.
 
         Args:
             json_line (dict): Parsed JSON line.
@@ -300,13 +367,20 @@ class MetaAI:
         Returns:
             Tuple (str, list): Response message and list of sources.
         """
+        # Try standard Abra structure first
         bot_response_message = (
             json_line.get("data", {}).get("node", {}).get("bot_response_message", {})
         )
+        
+        # If empty, try Kadabra structure
+        if not bot_response_message:
+            bot_response_message = json_line.get("data", {}).get("message", {})
+        
         response = format_response(response=json_line)
         fetch_id = bot_response_message.get("fetch_id")
         sources = self.fetch_sources(fetch_id) if fetch_id else []
         medias = self.extract_media(bot_response_message)
+        
         return {"message": response, "sources": sources, "media": medias}
 
     @staticmethod
@@ -323,24 +397,52 @@ class MetaAI:
         """
         medias = []
         
-        # Extract images from imagine_card (standard image generation)
-        imagine_card = json_line.get("imagine_card", {})
-        session = imagine_card.get("session", {}) if imagine_card else {}
-        media_sets = (
-            (json_line.get("imagine_card", {}).get("session", {}).get("media_sets", []))
-            if imagine_card and session
-            else []
-        )
-        for media_set in media_sets:
-            imagine_media = media_set.get("imagine_media", [])
-            for media in imagine_media:
-                medias.append(
-                    {
-                        "url": media.get("uri"),
-                        "type": media.get("media_type"),
-                        "prompt": media.get("prompt"),
-                    }
-                )
+        # Extract images from content.imagine.session (has full URLs)
+        # This is the primary location with complete media information
+        content = json_line.get("content", {})
+        imagine = content.get("imagine", {})
+        session = imagine.get("session", {})
+        media_sets = session.get("media_sets", [])
+        
+        if media_sets:
+            # Found full imagine data with URIs
+            for media_set in media_sets:
+                imagine_media = media_set.get("imagine_media", [])
+                for media in imagine_media:
+                    # Try multiple possible URL fields
+                    url = (media.get("uri") or 
+                           media.get("image_uri") or 
+                           media.get("maybe_image_uri") or
+                           media.get("url"))
+                    if url:  # Only add if URL is found
+                        medias.append(
+                            {
+                                "url": url,
+                                "type": media.get("media_type"),
+                                "prompt": media.get("prompt"),
+                            }
+                        )
+        else:
+            # Fallback: Try imagine_card.session (may not have full URLs)
+            imagine_card = json_line.get("imagine_card", {})
+            if imagine_card:
+                session = imagine_card.get("session", {})
+                media_sets = session.get("media_sets", []) if session else []
+                for media_set in media_sets:
+                    imagine_media = media_set.get("imagine_media", [])
+                    for media in imagine_media:
+                        url = (media.get("uri") or 
+                               media.get("image_uri") or 
+                               media.get("maybe_image_uri") or
+                               media.get("url"))
+                        if url:
+                            medias.append(
+                                {
+                                    "url": url,
+                                    "type": media.get("media_type"),
+                                    "prompt": media.get("prompt"),
+                                }
+                            )
         
         # Extract from image_attachments (may contain both images and videos)
         image_attachments = json_line.get("image_attachments", [])
@@ -483,6 +585,8 @@ class MetaAI:
     def generate_video(
         self,
         prompt: str,
+        media_ids: Optional[list] = None,
+        attachment_metadata: Optional[Dict[str, Any]] = None,
         wait_before_poll: int = 10,
         max_attempts: int = 30,
         wait_seconds: int = 5,
@@ -494,6 +598,8 @@ class MetaAI:
 
         Args:
             prompt: Text prompt for video generation
+            media_ids: Optional list of media IDs from uploaded images
+            attachment_metadata: Optional dict with 'file_size' (int) and 'mime_type' (str)
             wait_before_poll: Seconds to wait before starting to poll (default: 10)
             max_attempts: Maximum polling attempts (default: 30)
             wait_seconds: Seconds between polling attempts (default: 5)
@@ -504,7 +610,11 @@ class MetaAI:
 
         Example:
             ai = MetaAI(cookies={"datr": "...", "abra_sess": "..."})
-            result = ai.generate_video("Generate a video of a sunset")
+            result = ai.generate_video(
+                "Generate a video of a sunset",
+                media_ids=["1234567890"],
+                attachment_metadata={'file_size': 3310, 'mime_type': 'image/jpeg'}
+            )
             if result["success"]:
                 print(f"Video URLs: {result['video_urls']}")
         """
@@ -521,11 +631,68 @@ class MetaAI:
         
         return video_gen.generate_video(
             prompt=prompt,
+            media_ids=media_ids,
+            attachment_metadata=attachment_metadata,
             wait_before_poll=wait_before_poll,
             max_attempts=max_attempts,
             wait_seconds=wait_seconds,
             verbose=verbose
         )
+
+    def upload_image(self, file_path: str) -> Dict[str, Any]:
+        """
+        Upload an image to Meta AI for use in conversations, image generation, or video creation.
+        
+        Args:
+            file_path: Path to the local image file to upload
+            
+        Returns:
+            Dictionary containing:
+                - success: bool - Whether the upload succeeded
+                - media_id: str - The uploaded image's media ID (use this in prompts)
+                - upload_session_id: str - Unique upload session ID
+                - file_name: str - Original filename
+                - file_size: int - File size in bytes
+                - mime_type: str - MIME type of the image
+                - error: str - Error message if upload failed
+                
+        Example:
+            >>> ai = MetaAI(cookies={"datr": "...", "abra_sess": "..."})
+            >>> result = ai.upload_image("path/to/image.jpg")
+            >>> if result["success"]:
+            >>>     print(f"Media ID: {result['media_id']}")
+            >>>     # Use media_id in subsequent prompts for image analysis/generation
+        """
+        # Extract required tokens from cookies
+        fb_dtsg = self.cookies.get("fb_dtsg", "")
+        jazoest = self.cookies.get("jazoest", "")
+        lsd = self.cookies.get("lsd", "")
+        
+        if not all([fb_dtsg, lsd]):
+            return {
+                "success": False,
+                "error": "Missing required tokens (fb_dtsg, lsd). Please ensure cookies are properly set."
+            }
+        
+        # Initialize uploader with session and cookies
+        uploader = ImageUploader(self.session, self.cookies)
+        
+        # Perform upload
+        result = uploader.upload_image(
+            file_path=file_path,
+            fb_dtsg=fb_dtsg,
+            jazoest=jazoest,
+            lsd=lsd
+        )
+        
+        # Ensure we always return a dict
+        if result is None:
+            return {
+                "success": False,
+                "error": "Upload failed with no response"
+            }
+        
+        return result
 
 
 if __name__ == "__main__":

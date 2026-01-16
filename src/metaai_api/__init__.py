@@ -4,6 +4,7 @@ A modern, feature-rich Python SDK providing seamless access to Meta AI's capabil
 - Chat with Llama 3 (with real-time internet access)
 - Generate AI images
 - Create AI videos from text prompts
+- Upload images for analysis and generation
 - No API key required
 """
 
@@ -15,6 +16,7 @@ __url__ = "https://github.com/mir-ashiq/metaai-api"
 from .main import MetaAI  # noqa
 from .client import send_animate_request
 from .video_generation import VideoGenerator  # noqa
+from .image_upload import ImageUploader  # noqa
 
-__all__ = ["MetaAI", "send_animate_request", "VideoGenerator"]
+__all__ = ["MetaAI", "send_animate_request", "VideoGenerator", "ImageUploader"]
 

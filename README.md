@@ -51,16 +51,18 @@ All in one SDK
 
 ### 🌟 Core Capabilities
 
-| Feature                      | Description                                  | Status   |
-| ---------------------------- | -------------------------------------------- | -------- |
-| 💬 **Intelligent Chat**      | Powered by Llama 3 with internet access      | ✅ Ready |
-| 🎨 **Image Generation**      | Create stunning AI-generated images          | ✅ Ready |
-| 🎬 **Video Generation**      | Generate videos from text prompts            | ✅ Ready |
-| 🌐 **Real-time Data**        | Get current information via Bing integration | ✅ Ready |
-| 📚 **Source Citations**      | Responses include verifiable sources         | ✅ Ready |
-| 🔄 **Streaming Support**     | Real-time response streaming                 | ✅ Ready |
-| 🔐 **Auto Token Management** | Automatic authentication handling            | ✅ Ready |
-| 🌍 **Proxy Support**         | Route requests through proxies               | ✅ Ready |
+| Feature                      | Description                                      | Status   |
+| ---------------------------- | ------------------------------------------------ | -------- |
+| 💬 **Intelligent Chat**      | Powered by Llama 3 with internet access          | ✅ Ready |
+| 📤 **Image Upload**          | Upload & analyze images, generate similar images | ✅ Ready |
+| 🎨 **Image Generation**      | Create stunning AI-generated images              | ✅ Ready |
+| 🎬 **Video Generation**      | Generate videos from text or uploaded images     | ✅ Ready |
+| 🔍 **Image Analysis**        | Describe, analyze, and extract info from images  | ✅ Ready |
+| 🌐 **Real-time Data**        | Get current information via Bing integration     | ✅ Ready |
+| 📚 **Source Citations**      | Responses include verifiable sources             | ✅ Ready |
+| 🔄 **Streaming Support**     | Real-time response streaming                     | ✅ Ready |
+| 🔐 **Auto Token Management** | Automatic authentication handling                | ✅ Ready |
+| 🌍 **Proxy Support**         | Route requests through proxies                   | ✅ Ready |
 
 ---
 
@@ -289,8 +291,9 @@ uvicorn metaai_api.api_server:app --host 0.0.0.0 --port 8000
 
 | Endpoint               | Method | Description                            |
 | ---------------------- | ------ | -------------------------------------- |
-| `/chat`                | POST   | Send chat messages                     |
-| `/image`               | POST   | Generate images                        |
+| `/upload`              | POST   | Upload images for analysis/generation  |
+| `/chat`                | POST   | Send chat messages (with/without imgs) |
+| `/image`               | POST   | Generate images (from text or imgs)    |
 | `/video`               | POST   | Generate video (blocks until complete) |
 | `/video/async`         | POST   | Start async video generation           |
 | `/video/jobs/{job_id}` | GET    | Poll async job status                  |
@@ -472,6 +475,72 @@ if result["success"]:
 
 ---
 
+## 📤 Image Upload & Analysis
+
+Upload images to Meta AI for analysis, similar image generation, and video creation:
+
+### Upload & Analyze Images
+
+```python
+from metaai_api import MetaAI
+
+# Initialize with Facebook cookies (required for image operations)
+ai = MetaAI(cookies={
+    "datr": "your_datr_cookie",
+    "abra_sess": "your_abra_sess_cookie"
+})
+
+# Step 1: Upload an image
+result = ai.upload_image("path/to/image.jpg")
+
+if result["success"]:
+    media_id = result["media_id"]
+    metadata = {
+        'file_size': result['file_size'],
+        'mime_type': result['mime_type']
+    }
+
+    # Step 2: Analyze the image
+    response = ai.prompt(
+        message="What do you see in this image? Describe it in detail.",
+        media_ids=[media_id],
+        attachment_metadata=metadata
+    )
+    print(f"🔍 Analysis: {response['message']}")
+
+    # Step 3: Generate similar images
+    response = ai.prompt(
+        message="Create a similar image in watercolor painting style",
+        media_ids=[media_id],
+        attachment_metadata=metadata,
+        is_image_generation=True
+    )
+    print(f"🎨 Generated {len(response['media'])} similar images")
+
+    # Step 4: Generate video from image
+    video = ai.generate_video(
+        prompt="generate a video with zoom in effect on this image",
+        media_ids=[media_id],
+        attachment_metadata=metadata
+    )
+    if video["success"]:
+        print(f"🎬 Video: {video['video_urls'][0]}")
+```
+
+**Output:**
+
+```
+🔍 Analysis: The image captures a serene lake scene set against a majestic mountain backdrop. In the foreground, there's a small, golden-yellow wooden boat with a bright yellow canopy floating on calm, glass‑like water...
+
+🎨 Generated 4 similar images
+
+🎬 Video: https://scontent.fsxr1-2.fna.fbcdn.net/o1/v/t6/f2/m421/video.mp4
+```
+
+📖 **Full Image Upload Guide:** See [IMAGE_UPLOAD_README.md](IMAGE_UPLOAD_README.md) for complete documentation!
+
+---
+
 ## 🎨 Image Generation
 
 Generate AI-powered images (requires Facebook authentication):
@@ -515,11 +584,12 @@ for i, image in enumerate(response['media'], 1):
 
 Explore working examples in the `examples/` directory:
 
-| File                                                       | Description       | Features                          |
-| ---------------------------------------------------------- | ----------------- | --------------------------------- |
-| 📄 **[simple_example.py](examples/simple_example.py)**     | Quick start guide | Basic chat + video generation     |
-| 📄 **[video_generation.py](examples/video_generation.py)** | Video generation  | Multiple examples, error handling |
-| 📄 **[test_example.py](examples/test_example.py)**         | Testing suite     | Validation and testing            |
+| File                                                                     | Description             | Features                               |
+| ------------------------------------------------------------------------ | ----------------------- | -------------------------------------- |
+| 📄 **[image_workflow_complete.py](examples/image_workflow_complete.py)** | Complete image workflow | Upload, analyze, generate images/video |
+| 📄 **[simple_example.py](examples/simple_example.py)**                   | Quick start guide       | Basic chat + video generation          |
+| 📄 **[video_generation.py](examples/video_generation.py)**               | Video generation        | Multiple examples, error handling      |
+| 📄 **[test_example.py](examples/test_example.py)**                       | Testing suite           | Validation and testing                 |
 
 ### Run an Example
 
@@ -543,8 +613,10 @@ python examples/video_generation.py
 
 | Document                                                    | Description                             |
 | ----------------------------------------------------------- | --------------------------------------- |
+| 📘 **[Image Upload Guide](IMAGE_UPLOAD_README.md)**         | Complete image upload documentation     |
 | 📘 **[Video Generation Guide](VIDEO_GENERATION_README.md)** | Complete video generation documentation |
 | 📙 **[Quick Reference](QUICK_REFERENCE.md)**                | Fast lookup for common tasks            |
+| 📙 **[Quick Usage](QUICK_USAGE.md)**                        | Image upload quick reference            |
 | 📗 **[Architecture Guide](ARCHITECTURE.md)**                | Technical architecture details          |
 | 📕 **[Contributing Guide](CONTRIBUTING.md)**                | How to contribute to the project        |
 | 📔 **[Changelog](CHANGELOG.md)**                            | Version history and updates             |
