@@ -50,5 +50,5 @@ dev = [
     "flake8",
 ]
 [tool.setuptools_scm]
-version_scheme = "release"
+version_scheme = "guess-next-dev"
 local_scheme = "no-local-version"
