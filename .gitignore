@@ -49,6 +49,7 @@ coverage.xml
 
 # Virtual environments
 venv/
+.venv/
 env/
 ENV/
 env.bak/
@@ -65,18 +66,9 @@ venv.bak/
 .DS_Store
 Thumbs.db
 
-# Project specific
+# Project specific - temporary/debug files
 *.json
 *.html
-test*.py
-try*.py
-v*.py
-version*.py
-generate_video*.py
-sou*.py
-sou*.txt
-chatgpt*.py
-g.py
 response_*.json
 response_*.txt
 video_generation_*.json
@@ -87,18 +79,51 @@ debug_response.py
 node_modules/
 yarn.lock
 
-# Keep example files
-!examples/*.py
+# Project specific - test scripts (exclude specific patterns)
+test*.py
+try*.py
+v*.py
+version*.py
+sou*.py
+sou*.txt
+chatgpt*.py
+g.py
 
-# Keep test suite
+# Logs
+*.log
+meta_ai_debug.log
+
+# Keep important files - examples
+!examples/*.py
+!examples/*.json
+
+# Keep important files - test suite
 !test_endpoints.py
 !test_image_upload.py
+!final_comprehensive_test.py
+!debug_async_video_test.py
+
+# Keep important files - utilities
+!analyze_debug_responses.py
+!enable_debug_logging.py
 
 # Keep documentation
 !*.md
+!README.md
+!IMAGE_UPLOAD_README.md
+!CHANGELOG.md
 
 # Keep configuration
 !*.toml
 !*.cfg
+!pyproject.toml
+!setup.cfg
 !requirements.txt
 !setup.py
+
+# Keep source code
+!src/**/*.py
+
+# Keep package structure
+!src/metaai_api/__init__.py
+!src/metaai_api/*.py
