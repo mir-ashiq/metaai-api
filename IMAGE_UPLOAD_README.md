@@ -27,7 +27,7 @@ This feature uses Meta's rupload protocol with automatic `media_id` management a
 The image upload functionality is included in the main package:
 
 ```bash
-pip install metaai-api
+pip install metaai-sdk
 ```
 
 Or install from source:
