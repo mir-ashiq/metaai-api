@@ -7,7 +7,7 @@ import requests
 import json
 import time
 
-API_URL = "http://localhost:8000"
+API_URL = "localhost:8000"
 IMAGE_PATH = r"C:\Users\spike\Downloads\meta-ai-api-main\ChatGPT Image Jan 14, 2026, 06_59_02 PM.png"
 
 def print_header(title):
