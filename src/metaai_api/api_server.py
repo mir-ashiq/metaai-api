@@ -216,8 +216,10 @@ async def chat(body: ChatRequest, cookies: Dict[str, str] = Depends(get_cookies)
 async def image(body: ImageRequest, cookies: Dict[str, str] = Depends(get_cookies)) -> Dict[str, Any]:
     ai = MetaAI(cookies=cookies, proxy=_get_proxies())
     try:
+        # Automatically prepend "generate image of" to the prompt
+        prompt = f"generate image of {body.prompt}" if not body.prompt.lower().startswith(("generate image", "create image")) else body.prompt
         return cast(Dict[str, Any], ai.prompt(
-            body.prompt, 
+            prompt, 
             stream=False, 
             new_conversation=body.new_conversation, 
             media_ids=body.media_ids, 
@@ -233,9 +235,11 @@ async def image(body: ImageRequest, cookies: Dict[str, str] = Depends(get_cookie
 async def video(body: VideoRequest, cookies: Dict[str, str] = Depends(get_cookies)) -> Dict[str, Any]:
     ai = MetaAI(cookies=cookies, proxy=_get_proxies())
     try:
+        # Automatically prepend "generate a video" to the prompt
+        prompt = f"generate a video {body.prompt}" if not body.prompt.lower().startswith(("generate a video", "generate video", "create a video", "create video")) else body.prompt
         return await run_in_threadpool(
             ai.generate_video,
-            body.prompt,
+            prompt,
             body.media_ids,
             body.attachment_metadata,
             body.wait_before_poll,
