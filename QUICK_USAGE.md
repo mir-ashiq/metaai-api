@@ -16,13 +16,23 @@ metadata = {'file_size': result['file_size'], 'mime_type': result['mime_type']}
 response = ai.prompt("What's in this image?", media_ids=[media_id], attachment_metadata=metadata)
 print(response["message"])
 
-# 3. Generate Similar Images
-response = ai.prompt("Create similar in anime style", media_ids=[media_id], attachment_metadata=metadata, is_image_generation=True)
+# 3. Generate Similar Images with orientation
+response = ai.prompt(
+    "Create similar in anime style",
+    media_ids=[media_id],
+    attachment_metadata=metadata,
+    orientation="VERTICAL"  # Options: "LANDSCAPE", "VERTICAL" (default), "SQUARE"
+)
 for img in response["media"]:
     print(img["url"])
 
-# 4. Generate Video
-video = ai.generate_video("animate with cinematic motion", media_ids=[media_id], attachment_metadata=metadata)
+# 4. Generate Video with orientation
+video = ai.generate_video(
+    "animate with cinematic motion",
+    media_ids=[media_id],
+    attachment_metadata=metadata,
+    orientation="LANDSCAPE"  # Wide format for cinematic effect
+)
 print(video["video_urls"][0])
 ```
 

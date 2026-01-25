@@ -223,7 +223,7 @@ except Exception as e:
 ## 🔗 Links
 
 - **GitHub**: [mir-ashiq/meta-ai-python](https://github.com/mir-ashiq/metaai-api)
-- **PyPI**: [metaai-api](https://pypi.org/project/metaai-api/)
+- **PyPI**: [metaai-sdk](https://pypi.org/project/metaai-sdk/)
 - **Documentation**: [README.md](README.md)
 - **Changelog**: [CHANGELOG.md](CHANGELOG.md)
 - **Meta AI**: https://www.meta.ai/

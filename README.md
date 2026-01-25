@@ -447,20 +447,27 @@ print(f"\n🎉 Generated {len(videos)} videos successfully!")
 🎉 Generated 3 videos successfully!
 ```
 
-### Example 3: Advanced Video Generation
+### Example 3: Advanced Video Generation with Orientation
 
 ```python
 from metaai_api import MetaAI
 
 ai = MetaAI(cookies=cookies)
 
-# Fine-tune generation parameters
+# Generate video with specific orientation (default is VERTICAL)
 result = ai.generate_video(
     prompt="A time-lapse of a flower blooming",
+    orientation="VERTICAL",   # Options: "LANDSCAPE", "VERTICAL", "SQUARE"
     wait_before_poll=15,      # Wait 15 seconds before checking
     max_attempts=50,          # Try up to 50 times
     wait_seconds=3,           # Wait 3 seconds between attempts
     verbose=True              # Show detailed progress
+)
+
+# Generate landscape video for widescreen
+result_landscape = ai.generate_video(
+    prompt="Panoramic view of sunset over mountains",
+    orientation="LANDSCAPE"   # Wide format (16:9)
 )
 
 if result["success"]:
@@ -470,6 +477,14 @@ if result["success"]:
         print(f"   Video {i}: {url}")
     print(f"⏱️ Generated at: {result['timestamp']}")
 ```
+
+**Supported Video Orientations:**
+
+- `"LANDSCAPE"` - Wide/horizontal (16:9) - ideal for widescreen, cinematic content
+- `"VERTICAL"` - Tall/vertical (9:16) - ideal for mobile, stories, reels (default)
+- `"SQUARE"` - Equal dimensions (1:1) - ideal for social posts
+
+````
 
 📖 **Full Video Guide:** See [VIDEO_GENERATION_README.md](https://github.com/mir-ashiq/metaai-api/blob/main/VIDEO_GENERATION_README.md) for complete documentation!
 
@@ -525,7 +540,7 @@ if result["success"]:
     )
     if video["success"]:
         print(f"🎬 Video: {video['video_urls'][0]}")
-```
+````
 
 **Output:**
 
@@ -543,7 +558,7 @@ if result["success"]:
 
 ## 🎨 Image Generation
 
-Generate AI-powered images (requires Facebook authentication):
+Generate AI-powered images with customizable orientations (requires Facebook authentication):
 
 ```python
 from metaai_api import MetaAI
@@ -551,8 +566,24 @@ from metaai_api import MetaAI
 # Initialize with Facebook credentials
 ai = MetaAI(fb_email="your_email@example.com", fb_password="your_password")
 
-# Generate images
+# Generate images with default orientation (VERTICAL)
 response = ai.prompt("Generate an image of a cyberpunk cityscape at night with neon lights")
+
+# Or specify orientation explicitly
+response_landscape = ai.prompt(
+    "Generate an image of a panoramic mountain landscape",
+    orientation="LANDSCAPE"  # Options: "LANDSCAPE", "VERTICAL", "SQUARE"
+)
+
+response_vertical = ai.prompt(
+    "Generate an image of a tall waterfall",
+    orientation="VERTICAL"  # Tall/portrait format (default)
+)
+
+response_square = ai.prompt(
+    "Generate an image of a centered mandala pattern",
+    orientation="SQUARE"  # Square format (1:1)
+)
 
 # Display results (Meta AI generates 4 images by default)
 print(f"🎨 Generated {len(response['media'])} images:")
@@ -560,6 +591,12 @@ for i, image in enumerate(response['media'], 1):
     print(f"  Image {i}: {image['url']}")
     print(f"  Prompt: {image['prompt']}")
 ```
+
+**Supported Orientations:**
+
+- `"LANDSCAPE"` - Wide/horizontal format (16:9) - ideal for panoramas, landscapes
+- `"VERTICAL"` - Tall/vertical format (9:16) - ideal for portraits, mobile content (default)
+- `"SQUARE"` - Equal dimensions (1:1) - ideal for social media, profile images
 
 **Output:**
 
@@ -640,7 +677,6 @@ class MetaAI:
 **Methods:**
 
 - **`prompt(message, stream=False, new_conversation=False)`**
-
   - Send a chat message
   - Returns: `dict` with `message`, `sources`, and `media`
 

@@ -141,6 +141,7 @@ class MetaAI:
         media_ids: Optional[list] = None,
         attachment_metadata: Optional[Dict[str, Any]] = None,
         is_image_generation: bool = False,
+        orientation: Optional[str] = None,
     ) -> Union[Dict, Generator[Dict, None, None]]:
         """
         Sends a message to the Meta AI and returns the response.
@@ -154,6 +155,7 @@ class MetaAI:
             media_ids (list): List of media IDs from uploaded images to include in the prompt. Defaults to None.
             attachment_metadata (dict): Optional dict with 'file_size' (int) and 'mime_type' (str). Defaults to None.
             is_image_generation (bool): Whether this is for image generation (vs chat). Defaults to False.
+            orientation (str): Image orientation for generation. Valid values: "LANDSCAPE", "VERTICAL", "SQUARE". Defaults to "VERTICAL".
 
         Returns:
             dict: A dictionary containing the response message and sources.
@@ -167,7 +169,10 @@ class MetaAI:
             url = "https://graph.meta.ai/graphql?locale=user"
 
         else:
-            auth_payload = {"fb_dtsg": self.cookies["fb_dtsg"]}
+            auth_payload = {
+                "fb_dtsg": self.cookies["fb_dtsg"],
+                "lsd": self.cookies.get("lsd", ""),
+            }
             url = "https://www.meta.ai/api/graphql/"
 
         if not self.external_conversation_id or new_conversation:
@@ -186,13 +191,15 @@ class MetaAI:
         
         # Generate offline threading IDs
         offline_threading_id = generate_offline_threading_id()
+        bot_offline_threading_id = str(int(offline_threading_id) + 1)
+        thread_session_id = str(uuid.uuid4())
         
         # Determine entrypoint based on context
         if images:
             # Video generation with images uses CHAT
             entrypoint = "KADABRA__CHAT__UNIFIED_INPUT_BAR"
-        elif media_ids:
-            # Any uploaded image use (chat analysis or image generation) uses DISCOVER
+        elif media_ids or orientation:
+            # Image generation with orientation OR uploaded images uses DISCOVER
             entrypoint = "KADABRA__DISCOVER__UNIFIED_INPUT_BAR"
         else:
             entrypoint = "ABRA__CHAT__TEXT"
@@ -200,42 +207,154 @@ class MetaAI:
         # Set friendly name based on entrypoint
         friendly_name = "useKadabraSendMessageMutation" if entrypoint.startswith("KADABRA") else "useAbraSendMessageMutation"
         
+        # Build variables dictionary
+        is_kadabra = entrypoint.startswith("KADABRA")
+        
+        if is_kadabra:
+            # Full Kadabra variables for image generation
+            variables = {
+                "message": {"sensitive_string_value": message},
+                "externalConversationId": self.external_conversation_id,
+                "offlineThreadingId": offline_threading_id,
+                "threadSessionId": thread_session_id,
+                "isNewConversation": new_conversation or not self.offline_threading_id,
+                "suggestedPromptIndex": None,
+                "promptPrefix": None,
+                "entrypoint": entrypoint,
+                "attachments": [],
+                "attachmentsV2": attachments_v2,
+                "activeMediaSets": [],
+                "activeCardVersions": [],
+                "activeArtifactVersion": None,
+                "userUploadEditModeInput": None,
+                "reelComposeInput": None,
+                "qplJoinId": uuid.uuid4().hex[:17],
+                "sourceRemixPostId": None,
+                "gkPlannerOrReasoningEnabled": True,
+                "selectedModel": "BASIC_OPTION",
+                "conversationMode": None,
+                "selectedAgentType": "PLANNER",
+                "agentSettings": None,
+                "conversationStarterId": None,
+                "promptType": None,
+                "artifactRewriteOptions": None,
+                "imagineOperationRequest": None,
+                "imagineClientOptions": {"orientation": orientation.upper() if orientation else "VERTICAL"},
+                "spaceId": None,
+                "sparkSnapshotId": None,
+                "topicPageId": None,
+                "includeSpace": False,
+                "storybookId": None,
+                "messagePersistentInput": {
+                    "attachment_size": attachment_metadata.get('file_size') if attachment_metadata else None,
+                    "attachment_type": attachment_metadata.get('mime_type') if attachment_metadata else None,
+                    "bot_message_offline_threading_id": bot_offline_threading_id,
+                    "conversation_mode": None,
+                    "external_conversation_id": self.external_conversation_id,
+                    "is_new_conversation": new_conversation or not self.offline_threading_id,
+                    "meta_ai_entry_point": entrypoint,
+                    "offline_threading_id": offline_threading_id,
+                    "prompt_id": None,
+                    "prompt_session_id": thread_session_id,
+                },
+                "alakazam_enabled": True,
+                "skipInFlightMessageWithParams": None,
+                "__relay_internal__pv__KadabraSocialSearchEnabledrelayprovider": False,
+                "__relay_internal__pv__KadabraZeitgeistEnabledrelayprovider": False,
+                "__relay_internal__pv__alakazam_enabledrelayprovider": True,
+                "__relay_internal__pv__sp_kadabra_survey_invitationrelayprovider": True,
+                "__relay_internal__pv__enable_kadabra_partial_resultsrelayprovider": False,
+                "__relay_internal__pv__AbraArtifactsEnabledrelayprovider": True,
+                "__relay_internal__pv__KadabraMemoryEnabledrelayprovider": False,
+                "__relay_internal__pv__AbraPlannerEnabledrelayprovider": True,
+                "__relay_internal__pv__AbraWidgetsEnabledrelayprovider": False,
+                "__relay_internal__pv__KadabraDeepResearchEnabledrelayprovider": False,
+                "__relay_internal__pv__KadabraThinkHarderEnabledrelayprovider": False,
+                "__relay_internal__pv__KadabraVergeEnabledrelayprovider": False,
+                "__relay_internal__pv__KadabraSpacesEnabledrelayprovider": False,
+                "__relay_internal__pv__KadabraProductSearchEnabledrelayprovider": False,
+                "__relay_internal__pv__KadabraAreServiceEnabledrelayprovider": False,
+                "__relay_internal__pv__kadabra_render_reasoning_response_statesrelayprovider": True,
+                "__relay_internal__pv__kadabra_reasoning_cotrelayprovider": False,
+                "__relay_internal__pv__AbraSearchInlineReferencesEnabledrelayprovider": True,
+                "__relay_internal__pv__AbraComposedTextWidgetsrelayprovider": True,
+                "__relay_internal__pv__KadabraNewCitationsEnabledrelayprovider": True,
+                "__relay_internal__pv__WebPixelRatiorelayprovider": 1,
+                "__relay_internal__pv__KadabraVideoDeliveryRequestrelayprovider": {
+                    "dash_manifest_requests": [{}],
+                    "progressive_url_requests": [{"quality": "HD"}, {"quality": "SD"}]
+                },
+                "__relay_internal__pv__KadabraWidgetsRedesignEnabledrelayprovider": False,
+                "__relay_internal__pv__kadabra_enable_send_message_retryrelayprovider": True,
+                "__relay_internal__pv__KadabraEmailCalendarIntegrationrelayprovider": False,
+                "__relay_internal__pv__ClippyUIrelayprovider": False,
+                "__relay_internal__pv__kadabra_reels_connect_featuresrelayprovider": False,
+                "__relay_internal__pv__AbraBugNubrelayprovider": False,
+                "__relay_internal__pv__AbraRedteamingrelayprovider": False,
+                "__relay_internal__pv__AbraDebugDevOnlyrelayprovider": False,
+                "__relay_internal__pv__kadabra_enable_open_in_editor_message_actionrelayprovider": True,
+                "__relay_internal__pv__BloksDeviceContextrelayprovider": {"pixel_ratio": 1},
+                "__relay_internal__pv__AbraThreadsEnabledrelayprovider": False,
+                "__relay_internal__pv__kadabra_story_builder_enabledrelayprovider": False,
+                "__relay_internal__pv__kadabra_imagine_canvas_enable_dev_settingsrelayprovider": False,
+                "__relay_internal__pv__kadabra_create_media_deletionrelayprovider": False,
+                "__relay_internal__pv__kadabra_moodboardrelayprovider": False,
+                "__relay_internal__pv__AbraArtifactDragImagineFromConversationrelayprovider": True,
+                "__relay_internal__pv__kadabra_media_item_renderer_heightrelayprovider": 545,
+                "__relay_internal__pv__kadabra_media_item_renderer_widthrelayprovider": 620,
+                "__relay_internal__pv__AbraQPDocUploadNuxTriggerNamerelayprovider": "meta_dot_ai_abra_web_doc_upload_nux_tour",
+                "__relay_internal__pv__AbraSurfaceNuxIDrelayprovider": "12177",
+                "__relay_internal__pv__KadabraConversationRenamingrelayprovider": True,
+                "__relay_internal__pv__AbraIsLoggedOutrelayprovider": not self.is_authed,
+                "__relay_internal__pv__KadabraCanvasDisplayHeaderV2relayprovider": False,
+                "__relay_internal__pv__AbraArtifactEditorDebugModerelayprovider": False,
+                "__relay_internal__pv__AbraArtifactEditorDownloadHTMLEnabledrelayprovider": False,
+                "__relay_internal__pv__kadabra_create_row_hover_optionsrelayprovider": False,
+                "__relay_internal__pv__kadabra_media_info_pillsrelayprovider": True,
+                "__relay_internal__pv__KadabraConcordInternalProfileBadgeEnabledrelayprovider": False,
+                "__relay_internal__pv__KadabraSocialGraphrelayprovider": True,
+            }
+        else:
+            # Simpler Abra variables for chat
+            variables = {
+                "message": {"sensitive_string_value": message},
+                "externalConversationId": self.external_conversation_id,
+                "offlineThreadingId": offline_threading_id,
+                "suggestedPromptIndex": None,
+                "flashVideoRecapInput": flash_video_input,
+                "flashPreviewInput": None,
+                "promptPrefix": None,
+                "entrypoint": entrypoint,
+                "attachments": [],
+                "attachmentsV2": attachments_v2,
+                "messagePersistentInput": {
+                    "attachment_size": attachment_metadata.get('file_size') if attachment_metadata else None,
+                    "attachment_type": attachment_metadata.get('mime_type') if attachment_metadata else None,
+                    "external_conversation_id": self.external_conversation_id,
+                    "offline_threading_id": offline_threading_id,
+                    "meta_ai_entry_point": entrypoint,
+                } if media_ids else None,
+                "icebreaker_type": "TEXT",
+                "__relay_internal__pv__AbraDebugDevOnlyrelayprovider": False,
+                "__relay_internal__pv__WebPixelRatiorelayprovider": 1,
+            }
+        
         payload = {
             **auth_payload,
             "fb_api_caller_class": "RelayModern",
             "fb_api_req_friendly_name": friendly_name,
-            "variables": json.dumps(
-                {
-                    "message": {"sensitive_string_value": message},
-                    "externalConversationId": self.external_conversation_id,
-                    "offlineThreadingId": offline_threading_id,
-                    "suggestedPromptIndex": None,
-                    "flashVideoRecapInput": flash_video_input,
-                    "flashPreviewInput": None,
-                    "promptPrefix": None,
-                    "entrypoint": entrypoint,
-                    "attachments": [],
-                    "attachmentsV2": attachments_v2,
-                    "messagePersistentInput": {
-                        "attachment_size": attachment_metadata.get('file_size') if attachment_metadata else None,
-                        "attachment_type": attachment_metadata.get('mime_type') if attachment_metadata else None,
-                        "external_conversation_id": self.external_conversation_id,
-                        "offline_threading_id": offline_threading_id,
-                        "meta_ai_entry_point": entrypoint,
-                    } if media_ids else None,
-                    "icebreaker_type": "TEXT",
-                    "__relay_internal__pv__AbraDebugDevOnlyrelayprovider": False,
-                    "__relay_internal__pv__WebPixelRatiorelayprovider": 1,
-                }
-            ),
+            "variables": json.dumps(variables),
             "server_timestamps": "true",
-            "doc_id": "34429318783334028" if entrypoint.startswith("KADABRA") else "7783822248314888",
+            "doc_id": "24895882500088854" if is_kadabra else "7783822248314888",
         }
         payload = urllib.parse.urlencode(payload)  # noqa
         headers = {
             "content-type": "application/x-www-form-urlencoded",
             "x-fb-friendly-name": friendly_name,
         }
+        # Add lsd header for authenticated requests
+        if self.cookies.get("lsd"):
+            headers["x-fb-lsd"] = self.cookies["lsd"]
         if self.is_authed:
             headers["cookie"] = f'abra_sess={self.cookies["abra_sess"]}'
             # Recreate the session to avoid cookie leakage when user is authenticated
@@ -248,7 +367,7 @@ class MetaAI:
             raw_response = response.text
             last_streamed_response = self.extract_last_response(raw_response)
             if not last_streamed_response:
-                return self.retry(message, stream=stream, attempts=attempts, media_ids=media_ids, attachment_metadata=attachment_metadata, is_image_generation=is_image_generation)
+                return self.retry(message, stream=stream, attempts=attempts, new_conversation=new_conversation, images=images, media_ids=media_ids, attachment_metadata=attachment_metadata, is_image_generation=is_image_generation, orientation=orientation)
 
             extracted_data = self.extract_data(last_streamed_response)
             return extracted_data
@@ -257,10 +376,10 @@ class MetaAI:
             lines = response.iter_lines()
             is_error = json.loads(next(lines))
             if len(is_error.get("errors", [])) > 0:
-                return self.retry(message, stream=stream, attempts=attempts, media_ids=media_ids, attachment_metadata=attachment_metadata, is_image_generation=is_image_generation)
+                return self.retry(message, stream=stream, attempts=attempts, new_conversation=new_conversation, images=images, media_ids=media_ids, attachment_metadata=attachment_metadata, is_image_generation=is_image_generation, orientation=orientation)
             return self.stream_response(lines)
 
-    def retry(self, message: str, stream: bool = False, attempts: int = 0, media_ids: Optional[list] = None, attachment_metadata: Optional[Dict[str, Any]] = None, is_image_generation: bool = False):
+    def retry(self, message: str, stream: bool = False, attempts: int = 0, new_conversation: bool = False, images: Optional[list] = None, media_ids: Optional[list] = None, attachment_metadata: Optional[Dict[str, Any]] = None, is_image_generation: bool = False, orientation: Optional[str] = None):
         """
         Retries the prompt function if an error occurs.
         """
@@ -269,7 +388,7 @@ class MetaAI:
                 f"Was unable to obtain a valid response from Meta AI. Retrying... Attempt {attempts + 1}/{MAX_RETRIES}."
             )
             time.sleep(3)
-            return self.prompt(message, stream=stream, attempts=attempts + 1, media_ids=media_ids, attachment_metadata=attachment_metadata, is_image_generation=is_image_generation)
+            return self.prompt(message, stream=stream, attempts=attempts + 1, new_conversation=new_conversation, images=images, media_ids=media_ids, attachment_metadata=attachment_metadata, is_image_generation=is_image_generation, orientation=orientation)
         else:
             raise Exception(
                 "Unable to obtain a valid response from Meta AI. Try again later."
@@ -587,6 +706,7 @@ class MetaAI:
         prompt: str,
         media_ids: Optional[list] = None,
         attachment_metadata: Optional[Dict[str, Any]] = None,
+        orientation: Optional[str] = None,
         wait_before_poll: int = 10,
         max_attempts: int = 30,
         wait_seconds: int = 5,
@@ -600,6 +720,7 @@ class MetaAI:
             prompt: Text prompt for video generation
             media_ids: Optional list of media IDs from uploaded images
             attachment_metadata: Optional dict with 'file_size' (int) and 'mime_type' (str)
+            orientation: Video orientation. Valid values: "LANDSCAPE", "VERTICAL", "SQUARE". Defaults to None.
             wait_before_poll: Seconds to wait before starting to poll (default: 10)
             max_attempts: Maximum polling attempts (default: 30)
             wait_seconds: Seconds between polling attempts (default: 5)
@@ -633,6 +754,7 @@ class MetaAI:
             prompt=prompt,
             media_ids=media_ids,
             attachment_metadata=attachment_metadata,
+            orientation=orientation,
             wait_before_poll=wait_before_poll,
             max_attempts=max_attempts,
             wait_seconds=wait_seconds,

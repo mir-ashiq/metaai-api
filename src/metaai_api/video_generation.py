@@ -92,6 +92,7 @@ class VideoGenerator:
         prompt: str,
         media_ids: Optional[List[str]] = None,
         attachment_metadata: Optional[Dict[str, Any]] = None,
+        orientation: Optional[str] = None,
         verbose: bool = True
     ) -> Dict:
         """
@@ -103,6 +104,7 @@ class VideoGenerator:
             prompt: Text prompt for video generation
             media_ids: Optional list of media IDs from uploaded images
             attachment_metadata: Optional dict with 'file_size' (int) and 'mime_type' (str)
+            orientation: Video orientation ("LANDSCAPE", "VERTICAL", "SQUARE"). Defaults to "VERTICAL".
             verbose: Whether to print status messages
         
         Returns:
@@ -113,11 +115,12 @@ class VideoGenerator:
                 cookies_str="datr=...; abra_sess=...",
                 prompt="Generate a video of a sunset",
                 media_ids=["1234567890"],
-                attachment_metadata={'file_size': 3310, 'mime_type': 'image/jpeg'}
+                attachment_metadata={'file_size': 3310, 'mime_type': 'image/jpeg'},
+                orientation="LANDSCAPE"
             )
         """
         generator = cls(cookies_str=cookies_str)
-        return generator.generate_video(prompt=prompt, media_ids=media_ids, attachment_metadata=attachment_metadata, verbose=verbose)
+        return generator.generate_video(prompt=prompt, media_ids=media_ids, attachment_metadata=attachment_metadata, orientation=orientation, verbose=verbose)
 
     def build_headers(
         self,
@@ -169,6 +172,7 @@ class VideoGenerator:
         prompt_text: str,
         media_ids: Optional[List[str]] = None,
         attachment_metadata: Optional[Dict[str, Any]] = None,
+        orientation: Optional[str] = None,
         verbose: bool = True
     ) -> Optional[str]:
         """
@@ -178,6 +182,7 @@ class VideoGenerator:
             prompt_text: The text prompt for video generation
             media_ids: Optional list of media IDs from uploaded images
             attachment_metadata: Optional dict with 'file_size' (int) and 'mime_type' (str)
+            orientation: Video orientation ("LANDSCAPE", "VERTICAL", "SQUARE"). Defaults to "VERTICAL".
             verbose: Whether to print status messages
 
         Returns:
@@ -231,7 +236,7 @@ class VideoGenerator:
             "promptType": None,
             "artifactRewriteOptions": None,
             "imagineOperationRequest": None,
-            "imagineClientOptions": {"orientation": "VERTICAL"},
+            "imagineClientOptions": {"orientation": orientation.upper() if orientation else "VERTICAL"},
             "spaceId": None,
             "sparkSnapshotId": None,
             "topicPageId": None,
@@ -306,7 +311,7 @@ class VideoGenerator:
             "__relay_internal__pv__KadabraSocialGraphrelayprovider": True
         }, separators=(',', ':'))
 
-        print(variables)
+        # print(variables)
 
         # Build raw multipart body (exactly as in working example)
         spin_t = str(int(time.time()))
@@ -468,6 +473,9 @@ Content-Disposition: form-data; name="doc_id"\r
         Returns:
             List of video URLs
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        
         # Build headers with query-specific friendly name
         headers = self.build_headers(
             content_type='application/x-www-form-urlencoded',
@@ -566,6 +574,9 @@ Content-Disposition: form-data; name="doc_id"\r
 
         for attempt in range(1, max_attempts + 1):
             try:
+                if verbose and attempt % 5 == 1:  # Log every 5th attempt
+                    logger.info(f"[VIDEO POLLING] Attempt {attempt}/{max_attempts} for conversation {conversation_id}")
+                
                 response = requests.post(
                     self.GRAPHQL_URL,
                     cookies=self.cookies,
@@ -575,29 +586,44 @@ Content-Disposition: form-data; name="doc_id"\r
                 )
 
                 if response.status_code == 200:
-                    # Extract video URLs from response
-                    video_urls = self._extract_video_urls_from_response(response.text)
+                    # Extract video URLs from response, passing attempt info to reduce noise
+                    is_final_attempt = (attempt == max_attempts)
+                    video_urls = self._extract_video_urls_from_response(
+                        response.text, 
+                        is_final_attempt=is_final_attempt
+                    )
 
                     if video_urls:
+                        if verbose:
+                            logger.info(f"[VIDEO POLLING] ✓ Successfully extracted {len(video_urls)} video URL(s) on attempt {attempt}")
                         return video_urls
                     else:
+                        if verbose and attempt % 5 == 0:  # Log every 5th attempt
+                            logger.debug(f"[VIDEO POLLING] No URLs yet on attempt {attempt}, continuing...")
                         time.sleep(wait_seconds)
                 else:
+                    if verbose:
+                        logger.warning(f"[VIDEO POLLING] HTTP {response.status_code} on attempt {attempt}")
                     time.sleep(wait_seconds)
 
             except Exception as e:
+                if verbose:
+                    logger.error(f"[VIDEO POLLING] Error on attempt {attempt}: {e}")
                 time.sleep(wait_seconds)
 
+        if verbose:
+            logger.error(f"[VIDEO POLLING] ⚠️ Failed to extract video URLs after {max_attempts} attempts")
         return []
 
     @staticmethod
-    def _extract_video_urls_from_response(response_text: str) -> List[str]:
+    def _extract_video_urls_from_response(response_text: str, is_final_attempt: bool = False) -> List[str]:
         """
         Extract video URLs from Meta AI GraphQL response.
         Uses the CORRECT structure from the original GitHub repo.
 
         Args:
             response_text: The response text to extract URLs from
+            is_final_attempt: Whether this is the final polling attempt (for logging)
 
         Returns:
             List of video URLs
@@ -605,15 +631,20 @@ Content-Disposition: form-data; name="doc_id"\r
         import logging
         logger = logging.getLogger(__name__)
         
-        logger.info("[VIDEO URL EXTRACTION] Starting extraction with proper structure...")
-        logger.debug(f"[VIDEO URL EXTRACTION] Response length: {len(response_text)} characters")
+        # Only log detailed extraction info on final attempt or when verbose debugging
+        log_details = is_final_attempt or logger.isEnabledFor(logging.DEBUG)
+        
+        if log_details:
+            logger.debug("[VIDEO URL EXTRACTION] Starting extraction with proper structure...")
+            logger.debug(f"[VIDEO URL EXTRACTION] Response length: {len(response_text)} characters")
 
         urls: List[str] = []
 
         try:
             # Parse the response
             data = json.loads(response_text)
-            logger.info("[VIDEO URL EXTRACTION] Successfully parsed response as JSON")
+            if log_details:
+                logger.debug("[VIDEO URL EXTRACTION] Successfully parsed response as JSON")
             
             # CORRECT STRUCTURE from original GitHub code:
             # data -> xfb_genai_fetch_post (or xab_abra__xfb_genai_fetch_post)
@@ -622,13 +653,14 @@ Content-Disposition: form-data; name="doc_id"\r
             data_obj = data.get("data", {})
             fetch_post = data_obj.get("xfb_genai_fetch_post") or data_obj.get("xab_abra__xfb_genai_fetch_post") or {}
             
-            if not fetch_post:
-                logger.warning("[VIDEO URL EXTRACTION] No xfb_genai_fetch_post or xab_abra__xfb_genai_fetch_post found in response")
-            else:
-                logger.info(f"[VIDEO URL EXTRACTION] Found fetch_post: {list(fetch_post.keys())}")
+            if not fetch_post and log_details:
+                logger.debug("[VIDEO URL EXTRACTION] No xfb_genai_fetch_post or xab_abra__xfb_genai_fetch_post found in response")
+            elif log_details:
+                logger.debug(f"[VIDEO URL EXTRACTION] Found fetch_post: {list(fetch_post.keys())}")
 
             messages = fetch_post.get("messages", {}).get("edges", [])
-            logger.info(f"[VIDEO URL EXTRACTION] Found {len(messages)} message edges")
+            if log_details:
+                logger.debug(f"[VIDEO URL EXTRACTION] Found {len(messages)} message edges")
             
             for edge_idx, edge in enumerate(messages):
                 node = edge.get("node", {})
@@ -636,62 +668,75 @@ Content-Disposition: form-data; name="doc_id"\r
                 imagine_video = content.get("imagine_video") or {}
                 
                 if not imagine_video:
-                    logger.debug(f"[VIDEO URL EXTRACTION] Edge {edge_idx}: No imagine_video found")
+                    if log_details:
+                        logger.debug(f"[VIDEO URL EXTRACTION] Edge {edge_idx}: No imagine_video found")
                     continue
                 
-                logger.info(f"[VIDEO URL EXTRACTION] Edge {edge_idx}: Found imagine_video with keys: {list(imagine_video.keys())}")
+                if log_details:
+                    logger.debug(f"[VIDEO URL EXTRACTION] Edge {edge_idx}: Found imagine_video with keys: {list(imagine_video.keys())}")
 
                 # Extract from videos.nodes[] array
                 videos = imagine_video.get("videos", {}).get("nodes", [])
-                logger.info(f"[VIDEO URL EXTRACTION] Edge {edge_idx}: Found {len(videos)} video nodes")
+                if log_details:
+                    logger.debug(f"[VIDEO URL EXTRACTION] Edge {edge_idx}: Found {len(videos)} video nodes")
                 
                 for video_idx, video in enumerate(videos):
                     # Try video_url or uri
                     uri = video.get("video_url") or video.get("uri")
                     if uri:
-                        logger.info(f"[VIDEO URL EXTRACTION] Found video_url/uri in videos.nodes[{video_idx}]: {uri[:100]}...")
+                        if log_details:
+                            logger.debug(f"[VIDEO URL EXTRACTION] Found video_url/uri in videos.nodes[{video_idx}]: {uri[:100]}...")
                         urls.append(uri)
                     
                     # Try videoDeliveryResponseResult.progressive_urls[]
                     delivery = video.get("videoDeliveryResponseResult") or {}
                     prog = delivery.get("progressive_urls", [])
-                    logger.info(f"[VIDEO URL EXTRACTION] Found {len(prog)} progressive_urls in video {video_idx}")
+                    if log_details and prog:
+                        logger.debug(f"[VIDEO URL EXTRACTION] Found {len(prog)} progressive_urls in video {video_idx}")
                     
                     for prog_idx, p in enumerate(prog):
                         pu = p.get("progressive_url")
                         if pu:
-                            logger.info(f"[VIDEO URL EXTRACTION] Found progressive_url[{prog_idx}]: {pu[:100]}...")
+                            if log_details:
+                                logger.debug(f"[VIDEO URL EXTRACTION] Found progressive_url[{prog_idx}]: {pu[:100]}...")
                             urls.append(pu)
 
                 # Extract from single video object
                 single_video = imagine_video.get("video") or {}
                 if isinstance(single_video, dict) and single_video:
-                    logger.info(f"[VIDEO URL EXTRACTION] Found single video object with keys: {list(single_video.keys())}")
+                    if log_details:
+                        logger.debug(f"[VIDEO URL EXTRACTION] Found single video object with keys: {list(single_video.keys())}")
                     
                     uri = single_video.get("video_url") or single_video.get("uri")
                     if uri:
-                        logger.info(f"[VIDEO URL EXTRACTION] Found video_url/uri in single video: {uri[:100]}...")
+                        if log_details:
+                            logger.debug(f"[VIDEO URL EXTRACTION] Found video_url/uri in single video: {uri[:100]}...")
                         urls.append(uri)
                     
                     delivery = single_video.get("videoDeliveryResponseResult") or {}
                     prog = delivery.get("progressive_urls", [])
-                    logger.info(f"[VIDEO URL EXTRACTION] Found {len(prog)} progressive_urls in single video")
+                    if log_details and prog:
+                        logger.debug(f"[VIDEO URL EXTRACTION] Found {len(prog)} progressive_urls in single video")
                     
                     for prog_idx, p in enumerate(prog):
                         pu = p.get("progressive_url")
                         if pu:
-                            logger.info(f"[VIDEO URL EXTRACTION] Found progressive_url[{prog_idx}]: {pu[:100]}...")
+                            if log_details:
+                                logger.debug(f"[VIDEO URL EXTRACTION] Found progressive_url[{prog_idx}]: {pu[:100]}...")
                             urls.append(pu)
 
         except json.JSONDecodeError as e:
-            logger.error(f"[VIDEO URL EXTRACTION] JSON decode failed: {e}")
-            logger.debug(f"[VIDEO URL EXTRACTION] Response preview: {response_text[:500]}")
+            if is_final_attempt:
+                logger.error(f"[VIDEO URL EXTRACTION] JSON decode failed: {e}")
+                logger.debug(f"[VIDEO URL EXTRACTION] Response preview: {response_text[:500]}")
             
             # Fallback to regex
-            logger.info("[VIDEO URL EXTRACTION] Falling back to regex extraction...")
+            if log_details:
+                logger.debug("[VIDEO URL EXTRACTION] Falling back to regex extraction...")
             import re
             urls = re.findall(r'https?://[^\s"\'<>]+fbcdn[^\s"\'<>]+\.mp4[^\s"\'<>]*', response_text)
-            logger.info(f"[VIDEO URL EXTRACTION] Regex found {len(urls)} .mp4 URLs")
+            if log_details:
+                logger.debug(f"[VIDEO URL EXTRACTION] Regex found {len(urls)} .mp4 URLs")
 
         # Deduplicate while preserving order
         seen = set()
@@ -701,11 +746,13 @@ Content-Disposition: form-data; name="doc_id"\r
                 seen.add(u)
                 unique_urls.append(u)
         
-        logger.info(f"[VIDEO URL EXTRACTION] Final result: {len(unique_urls)} unique video URLs")
+        # Only log final result if we have URLs or if this is the final attempt
         if unique_urls:
-            for idx, url in enumerate(unique_urls, 1):
-                logger.info(f"[VIDEO URL EXTRACTION] Final URL {idx}: {url[:150]}...")
-        else:
+            if log_details:
+                logger.debug(f"[VIDEO URL EXTRACTION] Final result: {len(unique_urls)} unique video URLs")
+                for idx, url in enumerate(unique_urls, 1):
+                    logger.debug(f"[VIDEO URL EXTRACTION] Final URL {idx}: {url[:150]}...")
+        elif is_final_attempt:
             logger.warning("[VIDEO URL EXTRACTION] ⚠️ NO VIDEO URLs FOUND!")
             logger.debug(f"[VIDEO URL EXTRACTION] Response preview (first 1000 chars): {response_text[:1000]}")
         
@@ -716,6 +763,7 @@ Content-Disposition: form-data; name="doc_id"\r
         prompt: str,
         media_ids: Optional[List[str]] = None,
         attachment_metadata: Optional[Dict[str, Any]] = None,
+        orientation: Optional[str] = None,
         wait_before_poll: int = 10,
         max_attempts: int = 30,
         wait_seconds: int = 5,
@@ -728,6 +776,7 @@ Content-Disposition: form-data; name="doc_id"\r
             prompt: Text prompt for video generation
             media_ids: Optional list of media IDs from uploaded images
             attachment_metadata: Optional dict with 'file_size' (int) and 'mime_type' (str)
+            orientation: Video orientation ("LANDSCAPE", "VERTICAL", "SQUARE"). Defaults to "VERTICAL".
             wait_before_poll: Seconds to wait before starting to poll
             max_attempts: Maximum polling attempts
             wait_seconds: Seconds between polling attempts
@@ -741,6 +790,7 @@ Content-Disposition: form-data; name="doc_id"\r
             prompt_text=prompt,
             media_ids=media_ids,
             attachment_metadata=attachment_metadata,
+            orientation=orientation,
             verbose=verbose
         )
 
