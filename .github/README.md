@@ -30,7 +30,7 @@ This SDK provides seamless access to Meta AI's capabilities including:
 ## Installation
 
 ```bash
-pip install metaai_api
+pip install metaai-sdk
 ```
 
 ## Quick Start
