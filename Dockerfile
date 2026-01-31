@@ -1,31 +1,25 @@
-# Use official Python image as base
+# Base Python image
 FROM python:3.11-slim
 
-# Set environment variables
+# Don’t write .pyc files & keep logs unbuffered
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 # Set work directory
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends build-essential && \
-    rm -rf /var/lib/apt/lists/*
+# Install deps
+COPY requirements.txt .
 
-# Copy requirements
-COPY requirements.txt ./
-
-# Install Python dependencies
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir metaai-sdk
 
-# Copy project files
+# Copy app code
 COPY . .
 
-# Expose port (if running a server, adjust as needed)
+# Tell container what port will be used
 EXPOSE 8000
 
-# Default command (adjust as needed, e.g., to run a server or script)
-CMD ["uvicorn", "metaai_api.api_server:app", "--host", "0.0.0.0", "--port", "${PORT:-8000}", "--reload"]
+# Launch Uvicorn binding to 0.0.0.0 on port 8000
+CMD ["uvicorn", "metaai_api.api_server:app", "--host", "0.0.0.0", "--port", "8000"]
