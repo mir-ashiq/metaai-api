@@ -239,7 +239,7 @@ class MetaAI:
                 "promptType": None,
                 "artifactRewriteOptions": None,
                 "imagineOperationRequest": None,
-                "imagineClientOptions": {"orientation": orientation.upper() if orientation else "VERTICAL"},
+                "imagineClientOptions": {"orientation": str(orientation).upper() if orientation else "VERTICAL"},
                 "spaceId": None,
                 "sparkSnapshotId": None,
                 "topicPageId": None,
