@@ -27,4 +27,4 @@ COPY . .
 EXPOSE 8000
 
 # Default command (adjust as needed, e.g., to run a server or script)
-CMD ["python", "src/metaai_api/main.py"]
+CMD ["uvicorn", "metaai_api.api_server:app", "--host", "0.0.0.0", "--port", "${PORT:-8000}", "--reload"]
