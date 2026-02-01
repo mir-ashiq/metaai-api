@@ -1,129 +1,100 @@
-# Byte-compiled / optimized / DLL files
+# =========================
+# Python
+# =========================
 __pycache__/
 *.py[cod]
 *$py.class
-
-# C extensions
 *.so
+*.pyc
 
-# Distribution / packaging
-.Python
+# =========================
+# Packaging
+# =========================
 build/
-develop-eggs/
 dist/
-downloads/
 eggs/
 .eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-pip-wheel-metadata/
-share/python-wheels/
 *.egg-info/
 .installed.cfg
-*.egg
 MANIFEST
+
+# =========================
+# Environment / secrets
+# =========================
 .env
+.env.local
 .pypirc
 
-# PyInstaller
-*.manifest
-*.spec
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
-.pytest_cache/
-
-# Virtual environments
+# =========================
+# Virtualenvs
+# =========================
 venv/
 .venv/
 env/
 ENV/
-env.bak/
-venv.bak/
 
-# IDEs
+# =========================
+# IDE / OS
+# =========================
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-
-# OS files
 .DS_Store
 Thumbs.db
 
-# Project specific - temporary/debug files
-*.json
-*.html
+# =========================
+# Logs
+# =========================
+*.log
+
+# =========================
+# TEMP / DEBUG FILES
+# =========================
 response_*.json
 response_*.txt
-video_generation_*.json
-source.html
-html_content.html
 debug_responses/
-debug_response.py
+html_content.html
+source.html
+
+# Debug test files (temporary/experimental)
+debug_*.py
+try_*.py
+quick_*.py
+analyze_*.py
+enable_*.py
+final_*.py
+
+# Specific temporary test files
+test_video_debug.py
+test_video_direct.py
+test_video_fixed.py
+test_orientation_quick.py
+test_image_quick.py
+debug_async_video_test.py
+
+# =========================
+# Node modules
+# =========================
 node_modules/
-yarn.lock
+package-lock.json
 
-# Project specific - test scripts (exclude specific patterns)
-test*.py
-try*.py
-v*.py
-version*.py
-sou*.py
-sou*.txt
-chatgpt*.py
-g.py
+# =========================
+# Temporary documentation
+# =========================
+*_FIX.md
+*_SUMMARY.md
+*_REPORT.md
+*_RESULTS.md
+*_BREAKTHROUGH.md
+FIXES_APPLIED.md
+API_FIXES_REPORT.md
+TEST_UPDATES.md
+FINAL_RESULTS.md
+VIDEO_BREAKTHROUGH.md
+IMPLEMENTATION_SUMMARY.md
+DEPLOYMENT_FIX.md
 
-# Logs
-*.log
-meta_ai_debug.log
-
-# Keep important files - examples
-!examples/*.py
-!examples/*.json
-
-# Keep important files - test suite
-!test_endpoints.py
-!test_image_upload.py
-!final_comprehensive_test.py
-!debug_async_video_test.py
-
-# Keep important files - utilities
-!analyze_debug_responses.py
-!enable_debug_logging.py
-
-# Keep documentation
-!*.md
-!README.md
-!IMAGE_UPLOAD_README.md
-!CHANGELOG.md
-
-# Keep configuration
-!*.toml
-!*.cfg
-!pyproject.toml
-!setup.cfg
-!requirements.txt
-!setup.py
-
-# Keep source code
-!src/**/*.py
-
-# Keep package structure
-!src/metaai_api/__init__.py
-!src/metaai_api/*.py
+# Don't include cloudflare-worker files
+cloudflare-worker

@@ -107,12 +107,14 @@ class ImageRequest(BaseModel):
     new_conversation: bool = False
     media_ids: Optional[list] = None
     attachment_metadata: Optional[dict] = None  # {'file_size': int, 'mime_type': str}
+    orientation: Optional[str] = None  # 'VERTICAL', 'LANDSCAPE' (not HORIZONTAL), or 'SQUARE'
 
 
 class VideoRequest(BaseModel):
     prompt: str
     media_ids: Optional[list] = None
     attachment_metadata: Optional[dict] = None  # {'file_size': int, 'mime_type': str}
+    orientation: Optional[str] = None  # 'VERTICAL', 'LANDSCAPE', or 'SQUARE'
     wait_before_poll: int = Field(10, ge=0, le=60)
     max_attempts: int = Field(30, ge=1, le=60)
     wait_seconds: int = Field(5, ge=1, le=30)
@@ -206,7 +208,14 @@ async def chat(body: ChatRequest, cookies: Dict[str, str] = Depends(get_cookies)
         raise HTTPException(status_code=400, detail="Streaming not supported via HTTP JSON; set stream=false")
     ai = MetaAI(cookies=cookies, proxy=_get_proxies())
     try:
-        return cast(Dict[str, Any], ai.prompt(body.message, stream=False, new_conversation=body.new_conversation, media_ids=body.media_ids, attachment_metadata=body.attachment_metadata))
+        return cast(Dict[str, Any], await run_in_threadpool(
+            ai.prompt,
+            body.message,
+            stream=False,
+            new_conversation=body.new_conversation,
+            media_ids=body.media_ids,
+            attachment_metadata=body.attachment_metadata
+        ))
     except Exception as exc:  # noqa: BLE001
         await cache.refresh_after_error()
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -218,13 +227,15 @@ async def image(body: ImageRequest, cookies: Dict[str, str] = Depends(get_cookie
     try:
         # Automatically prepend "generate image of" to the prompt
         prompt = f"generate image of {body.prompt}" if not body.prompt.lower().startswith(("generate image", "create image")) else body.prompt
-        return cast(Dict[str, Any], ai.prompt(
-            prompt, 
-            stream=False, 
-            new_conversation=body.new_conversation, 
-            media_ids=body.media_ids, 
+        return cast(Dict[str, Any], await run_in_threadpool(
+            ai.prompt,
+            prompt,
+            stream=False,
+            new_conversation=body.new_conversation,
+            media_ids=body.media_ids,
             attachment_metadata=body.attachment_metadata,
-            is_image_generation=True  # Image generation uses DISCOVER entrypoint
+            is_image_generation=True,  # Image generation uses DISCOVER entrypoint
+            orientation=body.orientation  # Support VERTICAL, HORIZONTAL, SQUARE
         ))
     except Exception as exc:  # noqa: BLE001
         await cache.refresh_after_error()
@@ -233,6 +244,10 @@ async def image(body: ImageRequest, cookies: Dict[str, str] = Depends(get_cookie
 
 @app.post("/video")
 async def video(body: VideoRequest, cookies: Dict[str, str] = Depends(get_cookies)) -> Dict[str, Any]:
+    # Force refresh cookies before video generation for best results
+    await cache.refresh_if_needed(force=True)
+    cookies = await cache.snapshot()
+    
     ai = MetaAI(cookies=cookies, proxy=_get_proxies())
     try:
         # Automatically prepend "generate a video" to the prompt
@@ -242,6 +257,7 @@ async def video(body: VideoRequest, cookies: Dict[str, str] = Depends(get_cookie
             prompt,
             body.media_ids,
             body.attachment_metadata,
+            body.orientation,
             body.wait_before_poll,
             body.max_attempts,
             body.wait_seconds,
@@ -254,6 +270,10 @@ async def video(body: VideoRequest, cookies: Dict[str, str] = Depends(get_cookie
 
 @app.post("/video/async")
 async def video_async(body: VideoRequest, cookies: Dict[str, str] = Depends(get_cookies)) -> Dict[str, str]:
+    # Force refresh cookies before video generation
+    await cache.refresh_if_needed(force=True)
+    cookies = await cache.snapshot()
+    
     job = await jobs.create()
     asyncio.create_task(_run_video_job(job.job_id, body, cookies))
     return {"job_id": job.job_id, "status": "pending"}
@@ -322,6 +342,7 @@ async def _run_video_job(job_id: str, body: VideoRequest, cookies: Dict[str, str
             body.prompt,
             body.media_ids,
             body.attachment_metadata,
+            body.orientation,
             body.wait_before_poll,
             body.max_attempts,
             body.wait_seconds,
