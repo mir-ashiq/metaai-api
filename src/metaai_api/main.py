@@ -12,6 +12,8 @@ from metaai_api.utils import (
     generate_offline_threading_id,
     extract_value,
     format_response,
+    detect_challenge_page,
+    handle_meta_ai_challenge,
 )
 
 from metaai_api.utils import get_fb_session, get_session
@@ -29,7 +31,13 @@ class MetaAI:
     """
 
     def __init__(
-        self, fb_email: Optional[str] = None, fb_password: Optional[str] = None, cookies: Optional[dict] = None, proxy: Optional[dict] = None
+        self, 
+        fb_email: Optional[str] = None, 
+        fb_password: Optional[str] = None, 
+        cookies: Optional[dict] = None, 
+        proxy: Optional[dict] = None,
+        lsd: Optional[str] = None,
+        fb_dtsg: Optional[str] = None
     ):
         self.session = get_session()
         self.session.headers.update(
@@ -47,37 +55,116 @@ class MetaAI:
         
         if cookies is not None:
             self.cookies = cookies
+            # Add manually provided tokens if available
+            if lsd:
+                self.cookies["lsd"] = lsd
+            if fb_dtsg:
+                self.cookies["fb_dtsg"] = fb_dtsg
             # Auto-fetch lsd and fb_dtsg if not present in cookies
             if "lsd" not in self.cookies or "fb_dtsg" not in self.cookies:
                 self._fetch_missing_tokens()
         else:
             self.cookies = self.get_cookies()
+            # Override with manually provided tokens if available
+            if lsd:
+                self.cookies["lsd"] = lsd
+            if fb_dtsg:
+                self.cookies["fb_dtsg"] = fb_dtsg
             
         self.external_conversation_id = None
         self.offline_threading_id = None
 
-    def _fetch_missing_tokens(self):
+    def _fetch_missing_tokens(self, max_retries: int = 3):
         """
         Fetch lsd and fb_dtsg tokens if they're missing from cookies.
+        Handles Meta AI challenge pages automatically.
+        
+        Args:
+            max_retries (int): Maximum number of retry attempts.
         """
         try:
-            cookies_str = "; ".join([f"{k}={v}" for k, v in self.cookies.items() if v])
-            
             session = HTMLSession()
-            headers = {"cookie": cookies_str}
-            response = session.get("https://www.meta.ai/", headers=headers)
+            # Set cookies on session object (not as header string)
+            session.cookies.update(self.cookies)
             
-            if "lsd" not in self.cookies:
-                lsd = extract_value(response.text, start_str='"LSD",[],{"token":"', end_str='"')
-                if lsd:
-                    self.cookies["lsd"] = lsd
+            headers = {
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+            }
             
-            if "fb_dtsg" not in self.cookies:
-                fb_dtsg = extract_value(response.text, start_str='DTSGInitData",[],{"token":"', end_str='"')
-                if fb_dtsg:
-                    self.cookies["fb_dtsg"] = fb_dtsg
+            for attempt in range(max_retries):
+                logging.info(f"Fetching tokens from Meta AI (attempt {attempt + 1}/{max_retries})...")
+                response = session.get("https://meta.ai", headers=headers)
+                
+                # Check if we got a challenge page
+                challenge_url = detect_challenge_page(response.text)
+                if challenge_url:
+                    logging.warning("Meta AI returned a challenge page. Attempting to handle it...")
+                    if handle_meta_ai_challenge(session, challenge_url=challenge_url, cookies_dict=self.cookies):
+                        # Retry fetching tokens after handling challenge
+                        response = session.get("https://meta.ai", headers=headers)
+                    else:
+                        logging.error("Failed to handle Meta AI challenge.")
+                        if attempt < max_retries - 1:
+                            time.sleep(2)
+                            continue
+                        else:
+                            break
+                
+                # Extract tokens from HTTP response - try multiple patterns
+                if "lsd" not in self.cookies:
+                    # Try JavaScript pattern first (original method)
+                    lsd = extract_value(response.text, start_str='"LSD",[],{"token":"', end_str='"}')  
+                    
+                    # If not found, try HTML input field pattern
+                    if not lsd:
+                        from bs4 import BeautifulSoup
+                        soup = BeautifulSoup(response.text, 'html.parser')
+                        lsd_input = soup.find("input", {"name": "lsd"})
+                        if lsd_input and lsd_input.get("value"):
+                            lsd = lsd_input["value"]  # type: ignore
+                    
+                    if lsd:
+                        self.cookies["lsd"] = lsd
+                        logging.info("Successfully fetched lsd token.")
+                    else:
+                        logging.warning("Could not extract lsd token from response.")
+                
+                if "fb_dtsg" not in self.cookies:
+                    # Try JavaScript pattern first (original method)
+                    fb_dtsg = extract_value(response.text, start_str='DTSGInitData",[],{"token":"', end_str='"')
+                    
+                    # If not found, try alternative patterns
+                    if not fb_dtsg:
+                        fb_dtsg = extract_value(response.text, start_str='"DTSGInitialData",[],{"token":"', end_str='"')
+                    if not fb_dtsg:
+                        fb_dtsg = extract_value(response.text, start_str='{"token":"', end_str='","async_get_token"')
+                    
+                    if fb_dtsg:
+                        self.cookies["fb_dtsg"] = fb_dtsg
+                        logging.info("Successfully fetched fb_dtsg token.")
+                    else:
+                        logging.warning("Could not extract fb_dtsg token from response.")
+                    if fb_dtsg:
+                        self.cookies["fb_dtsg"] = fb_dtsg
+                        logging.info("Successfully fetched fb_dtsg token.")
+                    else:
+                        logging.warning("Could not extract fb_dtsg token from response.")
+                
+                # Check if we got both tokens
+                if ("lsd" in self.cookies and self.cookies["lsd"]) and \
+                   ("fb_dtsg" in self.cookies and self.cookies["fb_dtsg"]):
+                    logging.info("Token fetch completed successfully.")
+                    break
+                    
+                if attempt < max_retries - 1:
+                    logging.warning(f"Tokens not fully fetched. Retrying in 2 seconds...")
+                    time.sleep(2)
+                    
         except Exception as e:
-            pass  # Silent fail, features may not work without tokens
+            logging.error(f"Error fetching tokens: {e}")
+            logging.warning("Some features may not work without lsd/fb_dtsg tokens.")
+            logging.info("Consider manually providing 'lsd' and 'fb_dtsg' tokens in the MetaAI constructor.")
 
     def get_access_token(self) -> str:
         """
@@ -619,6 +706,7 @@ class MetaAI:
     def get_cookies(self) -> dict:
         """
         Extracts necessary cookies from the Meta AI main page.
+        Handles challenge pages automatically.
 
         Returns:
             dict: A dictionary containing essential cookies.
@@ -629,10 +717,25 @@ class MetaAI:
         if self.fb_email is not None and self.fb_password is not None:
             fb_session = get_fb_session(self.fb_email, self.fb_password)
             headers = {"cookie": f"abra_sess={fb_session['abra_sess']}"}
+        
         response = session.get(
-            "https://www.meta.ai/",
+            "https://meta.ai",
             headers=headers,
         )
+        
+        # Check for challenge page
+        challenge_url = detect_challenge_page(response.text)
+        if challenge_url:
+            logging.warning("Meta AI returned a challenge page during get_cookies. Attempting to handle it...")
+            cookies_dict = {}
+            if fb_session:
+                cookies_dict = {"abra_sess": fb_session["abra_sess"]}
+            if handle_meta_ai_challenge(session, challenge_url=challenge_url, cookies_dict=cookies_dict):
+                # Retry after handling challenge
+                response = session.get("https://meta.ai", headers=headers)
+            else:
+                logging.error("Failed to handle challenge page in get_cookies.")
+        
         cookies = {
             "_js_datr": extract_value(
                 response.text, start_str='_js_datr":{"value":"', end_str='",'

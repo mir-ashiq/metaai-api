@@ -1,6 +1,8 @@
 from metaai_api import MetaAI
 
-# Your cookies from browser (lsd and fb_dtsg are auto-fetched!)
+# Your cookies from browser - lsd and fb_dtsg are automatically fetched!
+# Note: If you encounter challenges, you can also provide tokens manually:
+#   ai = MetaAI(cookies=cookies, lsd="your_lsd_token", fb_dtsg="your_fb_dtsg_token")
 cookies = {
     "datr": "datrcookie",
     "abra_sess": "abrasessioncookie",
@@ -22,7 +24,7 @@ print("="*80)
 # Use for chat
 print("\nAsking: What's the weather in San Francisco?")
 try:
-    chat = ai.prompt("What's the weather in San Francisco?", stream=False)
+    chat: dict = ai.prompt("What's the weather in San Francisco?", stream=False)  # type: ignore
     print(f"\n✅ Chat Response:\n{chat['message'][:200]}...\n")
 except Exception as e:
     print(f"❌ Chat Error: {e}\n")

@@ -1,5 +1,6 @@
 import logging
 import random
+import re
 import time
 from typing import Dict, Optional
 
@@ -54,9 +55,85 @@ def extract_value(text: str, start_str: str, end_str: str) -> str:
     Returns:
         str: The extracted value.
     """
-    start = text.find(start_str) + len(start_str)
+    start = text.find(start_str)
+    if start == -1:
+        return ""
+    start += len(start_str)
     end = text.find(end_str, start)
+    if end == -1:
+        return ""
     return text[start:end]
+
+
+def detect_challenge_page(html_text: str) -> Optional[str]:
+    """
+    Detect if Meta AI returned a challenge/verification page.
+    
+    Args:
+        html_text (str): The HTML response text.
+    
+    Returns:
+        Optional[str]: The challenge verification URL if found, None otherwise.
+    """
+    # Check for challenge page indicators
+    if "executeChallenge" in html_text or "__rd_verify" in html_text:
+        # Extract the verification URL using regex
+        match = re.search(r"fetch\('(/__rd_verify[^']+)'", html_text)
+        if match:
+            return match.group(1)
+    return None
+
+
+def handle_meta_ai_challenge(session: requests.Session, base_url: str = "https://meta.ai", 
+                             challenge_url: Optional[str] = None, cookies_dict: Optional[dict] = None,
+                             max_retries: int = 3) -> bool:
+    """
+    Handle Meta AI challenge page by making the verification POST request.
+    
+    Args:
+        session (requests.Session): The requests session to use.
+        base_url (str): The base URL for Meta AI.
+        challenge_url (Optional[str]): The challenge verification URL.
+        cookies_dict (Optional[dict]): Cookies to include in the request.
+        max_retries (int): Maximum number of retry attempts.
+    
+    Returns:
+        bool: True if challenge was handled successfully, False otherwise.
+    """
+    if not challenge_url:
+        return False
+    
+    full_url = f"{base_url}{challenge_url}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": base_url,
+        "Origin": base_url,
+    }
+    
+    if cookies_dict:
+        cookies_str = "; ".join([f"{k}={v}" for k, v in cookies_dict.items() if v])
+        headers["Cookie"] = cookies_str
+    
+    try:
+        for attempt in range(max_retries):
+            logging.info(f"Handling Meta AI challenge (attempt {attempt + 1}/{max_retries})...")
+            response = session.post(full_url, headers=headers, timeout=10)
+            
+            if response.status_code == 200:
+                logging.info("Challenge handled successfully.")
+                # Wait a moment for the challenge to process
+                time.sleep(2)
+                return True
+            
+            time.sleep(1)
+        
+        logging.warning(f"Failed to handle challenge after {max_retries} attempts.")
+        return False
+    except Exception as e:
+        logging.error(f"Error handling Meta AI challenge: {e}")
+        return False
 
 
 def format_response(response: dict) -> str:
@@ -140,8 +217,16 @@ def get_fb_session(email, password, proxies=None):
     soup = BeautifulSoup(response.text, "html.parser")
 
     # Parse necessary parameters from the login form
-    lsd = soup.find("input", {"name": "lsd"})["value"]
-    jazoest = soup.find("input", {"name": "jazoest"})["value"]
+    lsd_input = soup.find("input", {"name": "lsd"})
+    jazoest_input = soup.find("input", {"name": "jazoest"})
+    
+    if not lsd_input or not jazoest_input:
+        raise FacebookInvalidCredentialsException(
+            "Could not find login form parameters. Facebook may have changed their login page."
+        )
+    
+    lsd = lsd_input["value"]  # type: ignore
+    jazoest = jazoest_input["value"]  # type: ignore
 
     # Define the URL and body for the POST request to submit the login form
     post_url = "https://www.facebook.com/login/?next"
@@ -180,7 +265,7 @@ def get_fb_session(email, password, proxies=None):
     # Send the POST request
     session = requests.session()
     jar = cookies.RequestsCookieJar()
-    session.proxies = proxies
+    session.proxies = proxies  # type: ignore
     session.cookies = jar
 
     result = session.post(post_url, headers=headers, data=data)
@@ -245,7 +330,7 @@ def get_fb_session(email, password, proxies=None):
         "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     }
     session = requests.session()
-    session.proxies = proxies
+    session.proxies = proxies  # type: ignore
     response = session.get(url, headers=headers, data=payload, allow_redirects=False)
 
     next_url = response.headers["Location"]
@@ -287,7 +372,7 @@ def get_cookies() -> dict:
         dict: A dictionary containing essential cookies.
     """
     session = HTMLSession()
-    response = session.get("https://www.meta.ai/")
+    response = session.get("https://meta.ai")
     return {
         "_js_datr": extract_value(
             response.text, start_str='_js_datr":{"value":"', end_str='",'

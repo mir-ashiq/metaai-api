@@ -74,7 +74,7 @@ class VideoGenerator:
         # Fetch Meta AI page with cookies
         session = HTMLSession()
         headers = {"cookie": cookies_str}
-        response = session.get("https://www.meta.ai/", headers=headers)
+        response = session.get("https://meta.ai", headers=headers)
         
         # Extract lsd and fb_dtsg
         lsd = extract_value(response.text, start_str='"LSD",[],{"token":"', end_str='"')

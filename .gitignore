@@ -73,6 +73,10 @@ test_video_fixed.py
 test_orientation_quick.py
 test_image_quick.py
 debug_async_video_test.py
+test_current_flow.py
+test_simple_approach.py
+test_render_fix.py
+test_success.py
 
 # =========================
 # Node modules
@@ -95,6 +99,8 @@ FINAL_RESULTS.md
 VIDEO_BREAKTHROUGH.md
 IMPLEMENTATION_SUMMARY.md
 DEPLOYMENT_FIX.md
+GITHUB_ISSUE_RESPONSE.md
+QUICK_FIX_GUIDE.md
 
 # Don't include cloudflare-worker files
 cloudflare-worker

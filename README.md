@@ -51,18 +51,18 @@ All in one SDK
 
 ### 🌟 Core Capabilities
 
-| Feature                      | Description                                      | Status   |
-| ---------------------------- | ------------------------------------------------ | -------- |
-| 💬 **Intelligent Chat**      | Powered by Llama 3 with internet access          | ✅ Ready |
-| 📤 **Image Upload**          | Upload & analyze images, generate similar images | ✅ Ready |
-| 🎨 **Image Generation**      | Create stunning AI-generated images              | ✅ Ready |
-| 🎬 **Video Generation**      | Generate videos from text or uploaded images     | ✅ Ready |
-| 🔍 **Image Analysis**        | Describe, analyze, and extract info from images  | ✅ Ready |
-| 🌐 **Real-time Data**        | Get current information via Bing integration     | ✅ Ready |
-| 📚 **Source Citations**      | Responses include verifiable sources             | ✅ Ready |
-| 🔄 **Streaming Support**     | Real-time response streaming                     | ✅ Ready |
-| 🔐 **Auto Token Management** | Automatic authentication handling                | ✅ Ready |
-| 🌍 **Proxy Support**         | Route requests through proxies                   | ✅ Ready |
+| Feature                        | Description                                      | Status   |
+| ------------------------------ | ------------------------------------------------ | -------- |
+| 💬 **Intelligent Chat**        | Powered by Llama 3 with internet access          | ✅ Ready |
+| 📤 **Image Upload**            | Upload & analyze images, generate similar images | ✅ Ready |
+| 🎨 **Image Generation**        | Create stunning AI-generated images              | ✅ Ready |
+| 🎬 **Video Generation**        | Generate videos from text or uploaded images     | ✅ Ready |
+| 🔍 **Image Analysis**          | Describe, analyze, and extract info from images  | ✅ Ready |
+| 🌐 **Real-time Data**          | Get current information via Bing integration     | ✅ Ready |
+| 📚 **Source Citations**        | Responses include verifiable sources             | ✅ Ready |
+| 🔄 **Streaming Support**       | Real-time response streaming                     | ✅ Ready |
+| 🔐 **Flexible Authentication** | Auto-fetch or manual token provision             | ✅ Ready |
+| 🌍 **Proxy Support**           | Route requests through proxies                   | ✅ Ready |
 
 ---
 
@@ -177,7 +177,57 @@ This calculation uses the compound interest formula: A = P(1 + r/n)^(nt)
 
 ---
 
-## 💬 Chat Features
+## � Authentication Options
+
+The SDK supports **flexible authentication** with two modes:
+
+### Mode 1: Automatic Token Fetching (Recommended)
+
+Provide basic cookies - `lsd` and `fb_dtsg` tokens are automatically fetched from Meta AI:
+
+```python
+from metaai_api import MetaAI
+
+# Provide basic cookies only
+cookies = {
+    "datr": "your_datr_value",
+    "abra_sess": "your_abra_sess_value",
+    "dpr": "1.25",
+    "wd": "1920x1080"
+}
+
+ai = MetaAI(cookies=cookies)
+# SDK automatically fetches lsd and fb_dtsg tokens!
+```
+
+### Mode 2: Manual Token Provision (Fallback)
+
+Provide all tokens manually if automatic fetching fails:
+
+```python
+from metaai_api import MetaAI
+
+# Provide cookies + manual tokens
+cookies = {
+    "datr": "your_datr_value",
+    "abra_sess": "your_abra_sess_value",
+    "dpr": "1.25",
+    "wd": "1920x1080"
+}
+
+ai = MetaAI(
+    cookies=cookies,
+    lsd="AVq1234567890",           # Manual token
+    fb_dtsg="ABCD:EFGH:123456789"  # Manual token
+)
+# No auto-fetch needed!
+```
+
+> **💡 Tip:** Start with **Mode 1** (automatic). Only use **Mode 2** if you encounter token fetching issues.
+
+---
+
+## �💬 Chat Features
 
 ### Streaming Responses
 
@@ -349,6 +399,11 @@ Create AI-generated videos from text descriptions!
 4. Click any request → **Headers** → Copy **Cookie** value
 5. Extract these values: `datr`, `abra_sess`, `dpr`, `wd`
 
+> **💡 Note:** The SDK supports **two authentication modes**:
+>
+> - **Automatic** (Recommended): Provide basic cookies, `lsd` and `fb_dtsg` tokens are auto-fetched
+> - **Manual**: Optionally provide `lsd` and `fb_dtsg` tokens directly if automatic fetching fails
+
 ### Example 1: Generate Your First Video
 
 ```python
@@ -401,6 +456,44 @@ else:
 📝 Prompt: A majestic lion walking through the African savanna at sunset
 🆔 Conversation ID: abc123-def456-ghi789
 ```
+
+### Example 1b: Manual Token Provision (Optional)
+
+If automatic token fetching fails or you prefer to provide tokens directly:
+
+```python
+from metaai_api import MetaAI
+
+# Your browser cookies + manually extracted tokens
+cookies = {
+    "datr": "your_datr_value_here",
+    "abra_sess": "your_abra_sess_value_here",
+    "dpr": "1.25",
+    "wd": "1920x1080"
+}
+
+# Initialize with manual tokens (no auto-fetch needed)
+ai = MetaAI(
+    cookies=cookies,
+    lsd="AVq1234567890",              # Manually extracted lsd token
+    fb_dtsg="ABCD:EFGH:123456789"     # Manually extracted fb_dtsg token
+)
+
+# Generate a video - tokens are already provided!
+result = ai.generate_video("A peaceful zen garden with koi fish")
+
+if result["success"]:
+    print("✅ Video generated successfully with manual tokens!")
+    print(f"🎬 Video URL: {result['video_urls'][0]}")
+```
+
+**How to extract `lsd` and `fb_dtsg` tokens:**
+
+1. Open https://meta.ai in your browser (logged in)
+2. Press **F12** → **Console** tab
+3. Run: `document.cookie`
+4. Look for `lsd=...` and `fb_dtsg=...` values
+5. Alternatively, right-click → **View Page Source** → Search for `"LSD",[],{"token":"` and `DTSGInitData",[],{"token":"`
 
 ### Example 2: Generate Multiple Videos
 
