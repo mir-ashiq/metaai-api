@@ -17,6 +17,7 @@ from .main import MetaAI  # noqa
 from .client import send_animate_request
 from .video_generation import VideoGenerator  # noqa
 from .image_upload import ImageUploader  # noqa
+from .generation import GenerationAPI  # noqa
 
-__all__ = ["MetaAI", "send_animate_request", "VideoGenerator", "ImageUploader"]
+__all__ = ["MetaAI", "send_animate_request", "VideoGenerator", "ImageUploader", "GenerationAPI"]
 

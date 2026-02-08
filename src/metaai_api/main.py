@@ -20,6 +20,7 @@ from metaai_api.utils import get_fb_session, get_session
 
 from metaai_api.exceptions import FacebookRegionBlocked
 from metaai_api.image_upload import ImageUploader
+from metaai_api.generation import GenerationAPI
 
 MAX_RETRIES = 3
 
@@ -76,6 +77,9 @@ class MetaAI:
             
         self.external_conversation_id = None
         self.offline_threading_id = None
+        
+        # Initialize Generation API
+        self.generation_api = GenerationAPI(session=self.session, cookies=self.cookies)
 
     def _fetch_missing_tokens(self, max_retries: int = 3):
         """
@@ -832,6 +836,104 @@ class MetaAI:
 
         references = search_results["references"]
         return references
+
+    def generate_image_new(
+        self,
+        prompt: str,
+        orientation: str = "VERTICAL",
+        num_images: int = 1,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Generate images using new API (based on captured network requests).
+        
+        Args:
+            prompt: Text description of the image to generate
+            orientation: Image orientation - "VERTICAL", "HORIZONTAL", or "SQUARE"
+            num_images: Number of images to generate (default: 1)
+            **kwargs: Additional parameters
+            
+        Returns:
+            Dictionary with response data and extracted image URLs
+            
+        Example:
+            >>> ai = MetaAI(cookies={"datr": "...", "abra_sess": "..."})
+            >>> result = ai.generate_image_new("Astronaut in space", orientation="VERTICAL")
+            >>> if result.get('success'):
+            >>>     for url in result.get('image_urls', []):
+            >>>         print(f"Image URL: {url}")
+        """
+        try:
+            response = self.generation_api.generate_image(
+                prompt=prompt,
+                orientation=orientation,
+                num_images=num_images,
+                **kwargs
+            )
+            
+            # Extract image URLs
+            image_urls = self.generation_api.extract_media_urls(response)
+            
+            return {
+                "success": True,
+                "prompt": prompt,
+                "orientation": orientation,
+                "num_images": num_images,
+                "image_urls": image_urls,
+                "response": response
+            }
+        except Exception as e:
+            logging.error(f"Error generating images: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "prompt": prompt
+            }
+
+    def generate_video_new(
+        self,
+        prompt: str,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Generate video using new API (based on captured network requests).
+        
+        Args:
+            prompt: Text description of the video to generate
+            **kwargs: Additional parameters
+            
+        Returns:
+            Dictionary with response data and extracted video URLs
+            
+        Example:
+            >>> ai = MetaAI(cookies={"datr": "...", "abra_sess": "..."})
+            >>> result = ai.generate_video_new("Astronaut in space")
+            >>> if result.get('success'):
+            >>>     for url in result.get('video_urls', []):
+            >>>         print(f"Video URL: {url}")
+        """
+        try:
+            response = self.generation_api.generate_video(
+                prompt=prompt,
+                **kwargs
+            )
+            
+            # Extract video URLs
+            video_urls = self.generation_api.extract_media_urls(response)
+            
+            return {
+                "success": True,
+                "prompt": prompt,
+                "video_urls": video_urls,
+                "response": response
+            }
+        except Exception as e:
+            logging.error(f"Error generating video: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "prompt": prompt
+            }
 
     def generate_video(
         self,
