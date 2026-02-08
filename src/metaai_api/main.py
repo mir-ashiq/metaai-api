@@ -70,6 +70,9 @@ class MetaAI:
                 self.cookies["lsd"] = lsd
             if fb_dtsg:
                 self.cookies["fb_dtsg"] = fb_dtsg
+            # Update is_authed if we successfully got cookies
+            if self.cookies and "lsd" in self.cookies and "fb_dtsg" in self.cookies:
+                self.is_authed = True
             
         self.external_conversation_id = None
         self.offline_threading_id = None
@@ -99,16 +102,23 @@ class MetaAI:
                 # Check if we got a challenge page
                 challenge_url = detect_challenge_page(response.text)
                 if challenge_url:
-                    logging.warning("Meta AI returned a challenge page. Attempting to handle it...")
-                    if handle_meta_ai_challenge(session, challenge_url=challenge_url, cookies_dict=self.cookies):
+                    logging.warning(f"Meta AI returned a challenge page. Challenge URL: {challenge_url}")
+                    logging.warning(f"Calling handle_meta_ai_challenge with cookies_dict keys: {list(self.cookies.keys())}")
+                    challenge_result = handle_meta_ai_challenge(session, challenge_url=challenge_url, cookies_dict=self.cookies)
+                    logging.warning(f"Challenge handling result: {challenge_result}")
+                    if challenge_result:
                         # Retry fetching tokens after handling challenge
+                        logging.warning("Re-fetching tokens after challenge resolution...")
+                        logging.warning(f"Cookies after challenge: {list(self.cookies.keys())}")
                         response = session.get("https://meta.ai", headers=headers)
                     else:
                         logging.error("Failed to handle Meta AI challenge.")
                         if attempt < max_retries - 1:
+                            logging.warning("Retrying...")
                             time.sleep(2)
                             continue
                         else:
+                            logging.error("Max retries reached. Aborting token fetch.")
                             break
                 
                 # Extract tokens from HTTP response - try multiple patterns
@@ -442,7 +452,7 @@ class MetaAI:
         # Add lsd header for authenticated requests
         if self.cookies.get("lsd"):
             headers["x-fb-lsd"] = self.cookies["lsd"]
-        if self.is_authed:
+        if self.is_authed and "abra_sess" in self.cookies:
             headers["cookie"] = f'abra_sess={self.cookies["abra_sess"]}'
             # Recreate the session to avoid cookie leakage when user is authenticated
             self.session = requests.Session()
@@ -726,15 +736,19 @@ class MetaAI:
         # Check for challenge page
         challenge_url = detect_challenge_page(response.text)
         if challenge_url:
-            logging.warning("Meta AI returned a challenge page during get_cookies. Attempting to handle it...")
+            logging.warning("⚠️  Meta AI returned a challenge page during get_cookies. Attempting to handle it...")
             cookies_dict = {}
             if fb_session:
                 cookies_dict = {"abra_sess": fb_session["abra_sess"]}
             if handle_meta_ai_challenge(session, challenge_url=challenge_url, cookies_dict=cookies_dict):
                 # Retry after handling challenge
+                logging.info("🔄 Re-fetching cookies after challenge resolution...")
                 response = session.get("https://meta.ai", headers=headers)
+                # Save the rd_challenge cookie if it was extracted
+                if "rd_challenge" in cookies_dict:
+                    logging.info(f"[COOKIES] Saving rd_challenge: {cookies_dict['rd_challenge'][:50]}...")
             else:
-                logging.error("Failed to handle challenge page in get_cookies.")
+                logging.error("❌ Failed to handle challenge page in get_cookies.")
         
         cookies = {
             "_js_datr": extract_value(
@@ -750,6 +764,10 @@ class MetaAI:
                 response.text, start_str='DTSGInitData",[],{"token":"', end_str='"'
             ),
         }
+
+        # Add rd_challenge if it was extracted from challenge handling
+        if challenge_url and "rd_challenge" in cookies_dict:
+            cookies["rd_challenge"] = cookies_dict["rd_challenge"]
 
         if len(headers) > 0 and fb_session is not None:
             cookies["abra_sess"] = fb_session["abra_sess"]
@@ -782,11 +800,22 @@ class MetaAI:
 
         payload = urllib.parse.urlencode(payload)  # noqa
 
+        # Build cookie string with rd_challenge if present
+        cookie_parts = [
+            "dpr=2",
+            f'abra_csrf={self.cookies.get("abra_csrf")}',
+            f'datr={self.cookies.get("datr")}',
+            "ps_n=1",
+            "ps_l=1"
+        ]
+        if "rd_challenge" in self.cookies:
+            cookie_parts.append(f'rd_challenge={self.cookies.get("rd_challenge")}')
+        
         headers = {
             "authority": "graph.meta.ai",
             "accept-language": "en-US,en;q=0.9,fr-FR;q=0.8,fr;q=0.7",
             "content-type": "application/x-www-form-urlencoded",
-            "cookie": f'dpr=2; abra_csrf={self.cookies.get("abra_csrf")}; datr={self.cookies.get("datr")}; ps_n=1; ps_l=1',
+            "cookie": "; ".join(cookie_parts),
             "x-fb-friendly-name": "AbraSearchPluginDialogQuery",
         }
 
@@ -853,11 +882,15 @@ class MetaAI:
         # Use VideoGenerator for video generation
         video_gen = VideoGenerator(cookies_str=cookies_str)
         
+        # Try to use existing conversation if we have one
+        conv_id = self.external_conversation_id if hasattr(self, 'external_conversation_id') else None
+        
         return video_gen.generate_video(
             prompt=prompt,
             media_ids=media_ids,
             attachment_metadata=attachment_metadata,
             orientation=orientation,
+            conversation_id=conv_id,
             wait_before_poll=wait_before_poll,
             max_attempts=max_attempts,
             wait_seconds=wait_seconds,

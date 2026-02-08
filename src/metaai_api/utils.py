@@ -101,9 +101,12 @@ def handle_meta_ai_challenge(session: requests.Session, base_url: str = "https:/
         bool: True if challenge was handled successfully, False otherwise.
     """
     if not challenge_url:
+        logging.warning("❌ Challenge handling failed: No challenge URL provided")
         return False
     
+    logging.warning(f"[CHALLENGE] Starting challenge handler with URL: {challenge_url}")
     full_url = f"{base_url}{challenge_url}"
+    logging.warning(f"[CHALLENGE] Full URL: {full_url}")
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "*/*",
@@ -115,24 +118,43 @@ def handle_meta_ai_challenge(session: requests.Session, base_url: str = "https:/
     if cookies_dict:
         cookies_str = "; ".join([f"{k}={v}" for k, v in cookies_dict.items() if v])
         headers["Cookie"] = cookies_str
+        logging.warning(f"[CHALLENGE] Using cookies: {list(cookies_dict.keys())}")
     
     try:
         for attempt in range(max_retries):
-            logging.info(f"Handling Meta AI challenge (attempt {attempt + 1}/{max_retries})...")
+            logging.warning(f"[CHALLENGE] Attempt {attempt + 1}/{max_retries} - Sending verification request...")
             response = session.post(full_url, headers=headers, timeout=10)
+            logging.warning(f"[CHALLENGE] Response status: {response.status_code}")
+            logging.warning(f"[CHALLENGE] Response headers: {dict(response.headers)}")
+            logging.warning(f"[CHALLENGE] Response cookies: {[c.name for c in response.cookies]}")
             
             if response.status_code == 200:
-                logging.info("Challenge handled successfully.")
+                # Extract rd_challenge cookie from response if present
+                rd_challenge = None
+                for cookie in response.cookies:
+                    if cookie.name == "rd_challenge":
+                        rd_challenge = cookie.value
+                        if cookies_dict is not None:
+                            cookies_dict["rd_challenge"] = rd_challenge
+                        logging.warning(f"[CHALLENGE] ✓ Extracted rd_challenge cookie: {rd_challenge[:50]}...")
+                        break
+                
+                if not rd_challenge:
+                    logging.warning("[CHALLENGE] ⚠️ No rd_challenge cookie found in response")
+                
+                logging.warning("✅ Challenge handled successfully!")
                 # Wait a moment for the challenge to process
                 time.sleep(2)
                 return True
+            else:
+                logging.warning(f"[CHALLENGE] HTTP {response.status_code} - Retrying...")
             
             time.sleep(1)
         
-        logging.warning(f"Failed to handle challenge after {max_retries} attempts.")
+        logging.error(f"❌ Failed to handle challenge after {max_retries} attempts.")
         return False
     except Exception as e:
-        logging.error(f"Error handling Meta AI challenge: {e}")
+        logging.error(f"❌ Error handling Meta AI challenge: {e}")
         return False
 
 
@@ -293,13 +315,26 @@ def get_fb_session(email, password, proxies=None):
     url = "https://www.meta.ai/state/"
 
     payload = f'__a=1&lsd={meta_ai_cookies["lsd"]}'
+    
+    # Build cookie string with rd_challenge if present
+    cookie_parts = [
+        "ps_n=1",
+        "ps_l=1",
+        "dpr=2",
+        f'_js_datr={meta_ai_cookies["_js_datr"]}',
+        f'abra_csrf={meta_ai_cookies["abra_csrf"]}',
+        f'datr={meta_ai_cookies["datr"]}'
+    ]
+    if "rd_challenge" in meta_ai_cookies:
+        cookie_parts.append(f'rd_challenge={meta_ai_cookies["rd_challenge"]}')
+    
     headers = {
         "authority": "www.meta.ai",
         "accept": "*/*",
         "accept-language": "en-US,en;q=0.9",
         "cache-control": "no-cache",
         "content-type": "application/x-www-form-urlencoded",
-        "cookie": f'ps_n=1; ps_l=1; dpr=2; _js_datr={meta_ai_cookies["_js_datr"]}; abra_csrf={meta_ai_cookies["abra_csrf"]}; datr={meta_ai_cookies["datr"]};; ps_l=1; ps_n=1',
+        "cookie": "; ".join(cookie_parts),
         "origin": "https://www.meta.ai",
         "pragma": "no-cache",
         "referer": "https://www.meta.ai/",
@@ -316,12 +351,25 @@ def get_fb_session(email, password, proxies=None):
 
     url = f"https://www.facebook.com/oidc/?app_id=1358015658191005&scope=openid%20linking&response_type=code&redirect_uri=https%3A%2F%2Fwww.meta.ai%2Fauth%2F&no_universal_links=1&deoia=1&state={state}"
     payload = {}
+    
+    # Build cookie string with rd_challenge if present
+    fb_cookie_parts = [
+        f"datr={response_login['cookies']['datr']}",
+        f"sb={response_login['cookies']['sb']}",
+        f"c_user={response_login['cookies']['c_user']}",
+        f"xs={response_login['cookies']['xs']}",
+        f"fr={response_login['cookies']['fr']}",
+        f"abra_csrf={meta_ai_cookies['abra_csrf']}"
+    ]
+    if "rd_challenge" in meta_ai_cookies:
+        fb_cookie_parts.append(f"rd_challenge={meta_ai_cookies['rd_challenge']}")
+    
     headers = {
         "authority": "www.facebook.com",
         "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
         "accept-language": "en-US,en;q=0.9",
         "cache-control": "no-cache",
-        "cookie": f"datr={response_login['cookies']['datr']}; sb={response_login['cookies']['sb']}; c_user={response_login['cookies']['c_user']}; xs={response_login['cookies']['xs']}; fr={response_login['cookies']['fr']}; abra_csrf={meta_ai_cookies['abra_csrf']};",
+        "cookie": "; ".join(fb_cookie_parts),
         "sec-fetch-dest": "document",
         "sec-fetch-mode": "navigate",
         "sec-fetch-site": "cross-site",
@@ -338,6 +386,16 @@ def get_fb_session(email, password, proxies=None):
     url = next_url
 
     payload = {}
+    
+    # Build cookie string with rd_challenge if present
+    final_cookie_parts = [
+        "dpr=2",
+        f'abra_csrf={meta_ai_cookies["abra_csrf"]}',
+        f'datr={meta_ai_cookies["_js_datr"]}'
+    ]
+    if "rd_challenge" in meta_ai_cookies:
+        final_cookie_parts.append(f'rd_challenge={meta_ai_cookies["rd_challenge"]}')
+    
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:125.0) Gecko/20100101 Firefox/125.0",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
@@ -345,7 +403,7 @@ def get_fb_session(email, password, proxies=None):
         "Accept-Encoding": "gzip, deflate, br",
         "Referer": "https://www.meta.ai/",
         "Connection": "keep-alive",
-        "Cookie": f'dpr=2; abra_csrf={meta_ai_cookies["abra_csrf"]}; datr={meta_ai_cookies["_js_datr"]}',
+        "Cookie": "; ".join(final_cookie_parts),
         "Upgrade-Insecure-Requests": "1",
         "Sec-Fetch-Dest": "document",
         "Sec-Fetch-Mode": "navigate",
@@ -373,7 +431,7 @@ def get_cookies() -> dict:
     """
     session = HTMLSession()
     response = session.get("https://meta.ai")
-    return {
+    cookies = {
         "_js_datr": extract_value(
             response.text, start_str='_js_datr":{"value":"', end_str='",'
         ),
@@ -387,6 +445,12 @@ def get_cookies() -> dict:
             response.text, start_str='"LSD",[],{"token":"', end_str='"}'
         ),
     }
+    
+    # Extract rd_challenge cookie if present (used for challenge verification)
+    if "rd_challenge" in response.cookies:
+        cookies["rd_challenge"] = response.cookies.get("rd_challenge")
+    
+    return cookies
 
 
 def get_session(

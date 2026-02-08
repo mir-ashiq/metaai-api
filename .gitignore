@@ -104,3 +104,4 @@ QUICK_FIX_GUIDE.md
 
 # Don't include cloudflare-worker files
 cloudflare-worker
+network.json

@@ -173,6 +173,7 @@ class VideoGenerator:
         media_ids: Optional[List[str]] = None,
         attachment_metadata: Optional[Dict[str, Any]] = None,
         orientation: Optional[str] = None,
+        conversation_id: Optional[str] = None,
         verbose: bool = True
     ) -> Optional[str]:
         """
@@ -180,16 +181,35 @@ class VideoGenerator:
 
         Args:
             prompt_text: The text prompt for video generation
-            media_ids: Optional list of media IDs from uploaded images
-            attachment_metadata: Optional dict with 'file_size' (int) and 'mime_type' (str)
+            media_ids: Optional list of media IDs (NOTE: Currently not supported for video generation)
+            attachment_metadata: Optional dict (NOTE: Currently not supported for video generation)
             orientation: Video orientation ("LANDSCAPE", "VERTICAL", "SQUARE"). Defaults to "VERTICAL".
+            conversation_id: Optional existing conversation ID to use (creates new if None)
             verbose: Whether to print status messages
 
         Returns:
             external_conversation_id if successful, None otherwise
+            
+        Note:
+            Image-to-video conversion via media_ids is not currently supported.
+            Only text-to-video generation works with this endpoint.
         """
-        # Generate unique IDs
-        external_conversation_id = str(uuid.uuid4())
+        # Warn if media_ids or attachment_metadata provided (not supported for video)
+        if media_ids or attachment_metadata:
+            logger.warning("[VIDEO] Warning: media_ids and attachment_metadata are not supported for video generation. Only text-to-video is currently available.")
+        
+        # Use provided conversation_id or generate a new one
+        if conversation_id:
+            external_conversation_id = conversation_id
+            is_new_conversation = False
+            if verbose:
+                print(f"[VIDEO] Using existing conversation: {conversation_id}...")
+        else:
+            external_conversation_id = str(uuid.uuid4())
+            is_new_conversation = True
+            if verbose:
+                print(f"[VIDEO] Creating new conversation: {external_conversation_id}...")
+        
         offline_threading_id = str(int(time.time() * 1000000000))[:19]
         thread_session_id = str(uuid.uuid4())
         bot_offline_threading_id = str(int(time.time() * 1000000000) + 1)[:19]
@@ -215,12 +235,12 @@ class VideoGenerator:
             "externalConversationId": external_conversation_id,
             "offlineThreadingId": offline_threading_id,
             "threadSessionId": thread_session_id,
-            "isNewConversation": True,
+            "isNewConversation": is_new_conversation,
             "suggestedPromptIndex": None,
             "promptPrefix": None,
             "entrypoint": "KADABRA__CHAT__UNIFIED_INPUT_BAR",
             "attachments": [],
-            "attachmentsV2": media_ids if media_ids else [],
+            "attachmentsV2": [],  # Must always be empty for video generation
             "activeMediaSets": [],
             "activeCardVersions": [],
             "activeArtifactVersion": None,
@@ -232,6 +252,7 @@ class VideoGenerator:
             "selectedModel": "BASIC_OPTION",
             "conversationMode": None,
             "selectedAgentType": "PLANNER",
+            "agentSettings": None,
             "conversationStarterId": None,
             "promptType": None,
             "artifactRewriteOptions": None,
@@ -243,12 +264,12 @@ class VideoGenerator:
             "includeSpace": False,
             "storybookId": None,
             "messagePersistentInput": {
-                "attachment_size": attachment_metadata.get('file_size') if attachment_metadata else None,
-                "attachment_type": attachment_metadata.get('mime_type') if attachment_metadata else None,
+                "attachment_size": None,  # Must be None for video generation
+                "attachment_type": None,  # Must be None for video generation
                 "bot_message_offline_threading_id": bot_offline_threading_id,
                 "conversation_mode": None,
                 "external_conversation_id": external_conversation_id,
-                "is_new_conversation": True,
+                "is_new_conversation": is_new_conversation,
                 "meta_ai_entry_point": "KADABRA__CHAT__UNIFIED_INPUT_BAR",
                 "offline_threading_id": offline_threading_id,
                 "prompt_id": None,
@@ -260,7 +281,6 @@ class VideoGenerator:
             "__relay_internal__pv__KadabraZeitgeistEnabledrelayprovider": False,
             "__relay_internal__pv__alakazam_enabledrelayprovider": True,
             "__relay_internal__pv__sp_kadabra_survey_invitationrelayprovider": True,
-            "__relay_internal__pv__KadabraAINativeUXrelayprovider": False,
             "__relay_internal__pv__enable_kadabra_partial_resultsrelayprovider": False,
             "__relay_internal__pv__AbraArtifactsEnabledrelayprovider": True,
             "__relay_internal__pv__KadabraMemoryEnabledrelayprovider": False,
@@ -285,11 +305,13 @@ class VideoGenerator:
             "__relay_internal__pv__KadabraWidgetsRedesignEnabledrelayprovider": False,
             "__relay_internal__pv__kadabra_enable_send_message_retryrelayprovider": True,
             "__relay_internal__pv__KadabraEmailCalendarIntegrationrelayprovider": False,
+            "__relay_internal__pv__ClippyUIrelayprovider": False,
             "__relay_internal__pv__kadabra_reels_connect_featuresrelayprovider": False,
             "__relay_internal__pv__AbraBugNubrelayprovider": False,
             "__relay_internal__pv__AbraRedteamingrelayprovider": False,
             "__relay_internal__pv__AbraDebugDevOnlyrelayprovider": False,
             "__relay_internal__pv__kadabra_enable_open_in_editor_message_actionrelayprovider": True,
+            "__relay_internal__pv__BloksDeviceContextrelayprovider": {"pixel_ratio": 1},
             "__relay_internal__pv__AbraThreadsEnabledrelayprovider": False,
             "__relay_internal__pv__kadabra_story_builder_enabledrelayprovider": False,
             "__relay_internal__pv__kadabra_imagine_canvas_enable_dev_settingsrelayprovider": False,
@@ -430,7 +452,7 @@ Content-Disposition: form-data; name="variables"\r
 ------WebKitFormBoundaryu59CeaZS4ag939lz\r
 Content-Disposition: form-data; name="doc_id"\r
 \r
-25290947477183545\r
+24895882500088854\r
 ------WebKitFormBoundaryu59CeaZS4ag939lz--\r
 """
 
@@ -517,7 +539,6 @@ Content-Disposition: form-data; name="doc_id"\r
             "__relay_internal__pv__KadabraZeitgeistEnabledrelayprovider": False,
             "__relay_internal__pv__alakazam_enabledrelayprovider": True,
             "__relay_internal__pv__sp_kadabra_survey_invitationrelayprovider": True,
-            "__relay_internal__pv__KadabraAINativeUXrelayprovider": False,
             "__relay_internal__pv__AbraArtifactsEnabledrelayprovider": True,
             "__relay_internal__pv__KadabraMemoryEnabledrelayprovider": False,
             "__relay_internal__pv__AbraPlannerEnabledrelayprovider": True,
@@ -569,7 +590,7 @@ Content-Disposition: form-data; name="doc_id"\r
             'fb_api_req_friendly_name': 'KadabraPromptRootQuery',
             'server_timestamps': 'true',
             'variables': json.dumps(variables),
-            'doc_id': '25290569913909283',
+            'doc_id': '26214626661477725',
         }
 
         for attempt in range(1, max_attempts + 1):
@@ -764,6 +785,7 @@ Content-Disposition: form-data; name="doc_id"\r
         media_ids: Optional[List[str]] = None,
         attachment_metadata: Optional[Dict[str, Any]] = None,
         orientation: Optional[str] = None,
+        conversation_id: Optional[str] = None,
         wait_before_poll: int = 10,
         max_attempts: int = 30,
         wait_seconds: int = 5,
@@ -774,9 +796,10 @@ Content-Disposition: form-data; name="doc_id"\r
 
         Args:
             prompt: Text prompt for video generation
-            media_ids: Optional list of media IDs from uploaded images
-            attachment_metadata: Optional dict with 'file_size' (int) and 'mime_type' (str)
+            media_ids: Optional list of media IDs (NOTE: Currently not supported)
+            attachment_metadata: Optional dict (NOTE: Currently not supported)
             orientation: Video orientation ("LANDSCAPE", "VERTICAL", "SQUARE"). Defaults to "VERTICAL".
+            conversation_id: Optional conversation ID to use (if None, creates new conversation)
             wait_before_poll: Seconds to wait before starting to poll
             max_attempts: Maximum polling attempts
             wait_seconds: Seconds between polling attempts
@@ -784,15 +807,31 @@ Content-Disposition: form-data; name="doc_id"\r
 
         Returns:
             Dictionary with success status, conversation_id, prompt, video_urls, and timestamp
+            
+        Note:
+            Currently only text-to-video generation is supported.
+            Image-to-video (via media_ids) is not yet available through this endpoint.
         """
-        # Step 1: Create video generation request
-        conversation_id = self.create_video_generation_request(
-            prompt_text=prompt,
-            media_ids=media_ids,
-            attachment_metadata=attachment_metadata,
-            orientation=orientation,
-            verbose=verbose
-        )
+        # Step 1: Create video generation request (or use existing conversation)
+        if not conversation_id:
+            conversation_id = self.create_video_generation_request(
+                prompt_text=prompt,
+                media_ids=media_ids,
+                attachment_metadata=attachment_metadata,
+                orientation=orientation,
+                conversation_id=None,
+                verbose=verbose
+            )
+        else:
+            # Use existing conversation - still need to send the video prompt
+            conversation_id = self.create_video_generation_request(
+                prompt_text=prompt,
+                media_ids=media_ids,
+                attachment_metadata=attachment_metadata,
+                orientation=orientation,
+                conversation_id=conversation_id,
+                verbose=verbose
+            )
 
         if not conversation_id:
             return {"success": False, "error": "Failed to create video generation request"}
