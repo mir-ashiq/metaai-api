@@ -1,15 +1,5 @@
-from metaai_api import MetaAI
+from generation_api import ImageGenerator
 
-# Initialize
-ai = MetaAI()
-
-# Chat
-response = ai.prompt("Hello, how are you?")
-
-# Generate images
-response = ai.prompt("a beautiful sunset")
-
-# Generate videos (requires cookies)
-from metaai_api import VideoGenerator
-gen = VideoGenerator(cookies_str="your_cookies")
-result = gen.generate_video("ocean waves")
+generator = ImageGenerator()
+response = generator.generate_image("a beautiful sunset", num_images=4, aspect_ratio="16:9")
+print(response.json())
