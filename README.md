@@ -51,18 +51,23 @@ All in one SDK
 
 ### 🌟 Core Capabilities
 
-| Feature                        | Description                                      | Status   |
-| ------------------------------ | ------------------------------------------------ | -------- |
-| 💬 **Intelligent Chat**        | Powered by Llama 3 with internet access          | ✅ Ready |
-| 📤 **Image Upload**            | Upload & analyze images, generate similar images | ✅ Ready |
-| 🎨 **Image Generation**        | Create stunning AI-generated images              | ✅ Ready |
-| 🎬 **Video Generation**        | Generate videos from text or uploaded images     | ✅ Ready |
-| 🔍 **Image Analysis**          | Describe, analyze, and extract info from images  | ✅ Ready |
-| 🌐 **Real-time Data**          | Get current information via Bing integration     | ✅ Ready |
-| 📚 **Source Citations**        | Responses include verifiable sources             | ✅ Ready |
-| 🔄 **Streaming Support**       | Real-time response streaming                     | ✅ Ready |
-| 🔐 **Flexible Authentication** | Auto-fetch or manual token provision             | ✅ Ready |
-| 🌍 **Proxy Support**           | Route requests through proxies                   | ✅ Ready |
+> **⚠️ Current Status Notice:**  
+> **Chat functionality** is currently unavailable due to authentication challenges.  
+> **Image & Video Generation** are fully functional using simple cookie-based authentication (only 3 cookies needed).  
+> See [SPEED_TEST_REPORT.md](SPEED_TEST_REPORT.md) for performance benchmarks.
+
+| Feature                      | Description                                     | Status         |
+| ---------------------------- | ----------------------------------------------- | -------------- |
+| 💬 **Intelligent Chat**      | Powered by Llama 3 with internet access         | ⚠️ Unavailable |
+| 📤 **Image Upload**          | Upload images for generation/analysis           | ✅ Working     |
+| 🎨 **Image Generation**      | Create stunning AI-generated images             | ✅ Working     |
+| 🎬 **Video Generation**      | Generate videos from text or uploaded images    | ✅ Working     |
+| 🔍 **Image Analysis**        | Describe, analyze, and extract info from images | ⚠️ Unavailable |
+| 🌐 **Real-time Data**        | Get current information via Bing integration    | ⚠️ Unavailable |
+| 📚 **Source Citations**      | Responses include verifiable sources            | ⚠️ Unavailable |
+| 🔄 **Streaming Support**     | Real-time response streaming                    | ⚠️ Unavailable |
+| 🔐 **Cookie Authentication** | Uses session cookies (no problematic tokens)    | ✅ Working     |
+| 🌍 **Proxy Support**         | Route requests through proxies                  | ✅ Working     |
 
 ---
 
@@ -99,52 +104,66 @@ pip install -e ".[api]"   # SDK + API server
 
 ## 🚀 Quick Start
 
-### Example 1: Ask a Question
+> **⚠️ Note:** Chat functionality is currently unavailable. Use the working **Image Generation** and **Video Generation** features below.
+
+### Example 1: Generate Images (WORKING ✅)
 
 ```python
 from metaai_api import MetaAI
 
-# Initialize the AI
+# Initialize with cookie-based authentication
 ai = MetaAI()
 
-# Ask anything!
-response = ai.prompt("Who won the NBA championship in 2024?")
-print(response["message"])
+# Generate images
+result = ai.generate_image_new(
+    prompt="a beautiful sunset over mountains",
+    orientation="LANDSCAPE"  # LANDSCAPE, VERTICAL, or SQUARE
+)
+
+if result["success"]:
+    print(f"Generated {len(result['image_urls'])} images:")
+    for url in result["image_urls"]:
+        print(url)
 ```
 
 **Output:**
 
 ```
-The Boston Celtics won the 2024 NBA Championship, defeating the Dallas Mavericks
-4-1 in the Finals. Jayson Tatum and Jaylen Brown led the Celtics to their 18th
-championship title, the most in NBA history. The series concluded on June 17, 2024,
-with the Celtics winning Game 5 at TD Garden in Boston.
+Generated 4 images:
+https://scontent-arn2-1.xx.fbcdn.net/o1/v/t0/f2/m421/AQN...
+https://scontent-arn2-1.xx.fbcdn.net/o1/v/t0/f2/m421/AQM...
+https://scontent-arn2-1.xx.fbcdn.net/o1/v/t0/f2/m421/AQO...
+https://scontent-arn2-1.xx.fbcdn.net/o1/v/t0/f2/m421/AQM...
 ```
 
-### Example 2: Get Stock Market Info
+### Example 2: Generate Videos (WORKING ✅)
 
 ```python
 from metaai_api import MetaAI
 
 ai = MetaAI()
-response = ai.prompt("What is the current price of Bitcoin?")
 
-print(f"💰 {response['message']}")
-print(f"\n📚 Sources: {len(response['sources'])} references found")
+# Generate video
+result = ai.generate_video_new(
+    prompt="waves crashing on a beach at sunset"
+)
+
+if result["success"]:
+    print(f"Generated {len(result['video_urls'])} videos:")
+    for url in result["video_urls"]:
+        print(url)
 ```
 
 **Output:**
 
 ```
-💰 As of November 22, 2025, Bitcoin (BTC) is trading at approximately $97,845 USD.
-The cryptocurrency has seen a 3.2% increase in the last 24 hours. Bitcoin's market
-capitalization stands at around $1.93 trillion, maintaining its position as the
-largest cryptocurrency by market cap.
-
-📚 Sources: 4 references found
+Generated 3 videos:
+https://scontent-arn2-1.xx.fbcdn.net/o1/v/t6/f2/m477/AQO...
+https://scontent-arn2-1.xx.fbcdn.net/o1/v/t6/f2/m259/AQN...
+https://scontent-arn2-1.xx.fbcdn.net/o1/v/t6/f2/m260/AQP...
 ```
 
-### Example 3: Solve Math Problems
+### Example 3: Upload & Use Images (WORKING ✅)
 
 ```python
 from metaai_api import MetaAI
@@ -179,51 +198,32 @@ This calculation uses the compound interest formula: A = P(1 + r/n)^(nt)
 
 ## � Authentication Options
 
-The SDK supports **flexible authentication** with two modes:
-
-### Mode 1: Automatic Token Fetching (Recommended)
-
-Provide basic cookies - `lsd` and `fb_dtsg` tokens are automatically fetched from Meta AI:
+The SDK uses simple **cookie-based authentication** with just 3 required cookies:
 
 ```python
 from metaai_api import MetaAI
 
-# Provide basic cookies only
+# Only 3 cookies required
 cookies = {
     "datr": "your_datr_value",
     "abra_sess": "your_abra_sess_value",
-    "dpr": "1.25",
-    "wd": "1920x1080"
+    "ecto_1_sess": "your_ecto_1_sess_value"  # Most important for generation
 }
 
 ai = MetaAI(cookies=cookies)
-# SDK automatically fetches lsd and fb_dtsg tokens!
 ```
 
-### Mode 2: Manual Token Provision (Fallback)
-
-Provide all tokens manually if automatic fetching fails:
+**Alternative: Load from environment variables**
 
 ```python
+import os
 from metaai_api import MetaAI
 
-# Provide cookies + manual tokens
-cookies = {
-    "datr": "your_datr_value",
-    "abra_sess": "your_abra_sess_value",
-    "dpr": "1.25",
-    "wd": "1920x1080"
-}
-
-ai = MetaAI(
-    cookies=cookies,
-    lsd="AVq1234567890",           # Manual token
-    fb_dtsg="ABCD:EFGH:123456789"  # Manual token
-)
-# No auto-fetch needed!
+# Cookies from .env file
+ai = MetaAI()  # Automatically loads from META_AI_* environment variables
 ```
 
-> **💡 Tip:** Start with **Mode 1** (automatic). Only use **Mode 2** if you encounter token fetching issues.
+> **💡 Note:** Token fetching (lsd/fb_dtsg) has been removed. Generation APIs work perfectly with just these 3 cookies!
 
 ---
 
@@ -308,9 +308,11 @@ print(response["message"])
 
 ---
 
-## � REST API Server (Optional)
+## 🌐 REST API Server (Optional)
 
-Deploy Meta AI as a REST API service that anyone can use! The API server auto-refreshes cookies to keep sessions alive.
+Deploy Meta AI as a REST API service! **Image and video generation endpoints are fully functional.**
+
+> **⚠️ Note**: Chat endpoint is currently unavailable due to token authentication issues.
 
 ### Installation
 
@@ -320,15 +322,13 @@ pip install metaai-sdk[api]
 
 ### Setup
 
-1. **Get your Meta AI cookies** (see [Video Generation](#-video-generation) section)
+1. **Get your Meta AI cookies** (see [Cookie Setup](#-cookie-setup) section)
 2. **Create `.env` file:**
 
 ```env
 META_AI_DATR=your_datr_cookie
 META_AI_ABRA_SESS=your_abra_sess_cookie
-META_AI_DPR=1
-META_AI_WD=1920x1080
-META_AI_REFRESH_INTERVAL_SECONDS=3600
+META_AI_ECTO_1_SESS=your_ecto_1_sess_cookie
 ```
 
 3. **Start the server:**
@@ -337,53 +337,72 @@ META_AI_REFRESH_INTERVAL_SECONDS=3600
 uvicorn metaai_api.api_server:app --host 0.0.0.0 --port 8000
 ```
 
+Server starts instantly (no token pre-fetching delays).
+
 ### API Endpoints
 
-| Endpoint               | Method | Description                            |
-| ---------------------- | ------ | -------------------------------------- |
-| `/upload`              | POST   | Upload images for analysis/generation  |
-| `/chat`                | POST   | Send chat messages (with/without imgs) |
-| `/image`               | POST   | Generate images (from text or imgs)    |
-| `/video`               | POST   | Generate video (blocks until complete) |
-| `/video/async`         | POST   | Start async video generation           |
-| `/video/jobs/{job_id}` | GET    | Poll async job status                  |
-| `/healthz`             | GET    | Health check                           |
+| Endpoint               | Method | Description                            | Status         |
+| ---------------------- | ------ | -------------------------------------- | -------------- |
+| `/healthz`             | GET    | Health check                           | ✅ Working     |
+| `/upload`              | POST   | Upload images for generation           | ✅ Working     |
+| `/image`               | POST   | Generate images from text              | ✅ Working     |
+| `/video`               | POST   | Generate video (blocks until complete) | ✅ Working     |
+| `/video/async`         | POST   | Start async video generation           | ✅ Working     |
+| `/video/jobs/{job_id}` | GET    | Poll async job status                  | ✅ Working     |
+| `/chat`                | POST   | Send chat messages                     | ⚠️ Unavailable |
 
-### Example Usage
+### Example Usage (Working Endpoints)
 
 ```python
 import requests
 
-# Chat
-response = requests.post("http://localhost:8000/chat", json={
-    "message": "What is the capital of France?",
-    "stream": False
-})
-print(response.json())
+BASE_URL = "http://localhost:8000"
+
+# Health check
+response = requests.get(f"{BASE_URL}/healthz")
+print(response.json())  # {"status": "ok"}
 
 # Image generation
-images = requests.post("http://localhost:8000/image", json={
+images = requests.post(f"{BASE_URL}/image", json={
     "prompt": "Cyberpunk cityscape at night",
-    "new_conversation": False
-})
-print(images.json())
+    "orientation": "LANDSCAPE"  # LANDSCAPE, VERTICAL, or SQUARE
+}, timeout=200)
+result = images.json()
+if result["success"]:
+    for url in result["image_urls"]:
+        print(url)
+
+# Video generation (synchronous)
+video = requests.post(f"{BASE_URL}/video", json={
+    "prompt": "waves crashing on beach"
+}, timeout=400)
+result = video.json()
+if result["success"]:
+    for url in result["video_urls"]:
+        print(url)
 
 # Async video generation
-job = requests.post("http://localhost:8000/video/async", json={
-    "prompt": "Generate a video of a sunset"
+job = requests.post(f"{BASE_URL}/video/async", json={
+    "prompt": "sunset over ocean"
 })
 job_id = job.json()["job_id"]
 
 # Poll for result
-status = requests.get(f"http://localhost:8000/video/jobs/{job_id}")
-print(status.json())
+import time
+while True:
+    status = requests.get(f"{BASE_URL}/video/jobs/{job_id}")
+    data = status.json()
+    if data["status"] == "completed":
+        print("Video URLs:", data["result"]["video_urls"])
+        break
+    time.sleep(5)
 ```
 
-### Testing
+### Performance
 
-```bash
-python test_api.py
-```
+- **Image Generation**: ~2 minutes (returns 4 images)
+- **Video Generation**: ~40-60 seconds (returns 3-4 videos)
+- **Upload**: < 5 seconds
 
 ---
 
@@ -393,16 +412,14 @@ Create AI-generated videos from text descriptions!
 
 ### Setup: Get Your Cookies
 
-1. Visit [meta.ai](https://www.meta.ai) in your browser
-2. Open DevTools (F12) → **Network** tab
-3. Refresh the page
-4. Click any request → **Headers** → Copy **Cookie** value
-5. Extract these values: `datr`, `abra_sess`, `dpr`, `wd`
+1. Visit [meta.ai](https://www.meta.ai) in your browser and login
+2. Open DevTools (F12) → **Application** tab → **Cookies** → https://meta.ai
+3. Copy these 3 cookie values:
+   - `datr`
+   - `abra_sess`
+   - `ecto_1_sess` (most important for generation)
 
-> **💡 Note:** The SDK supports **two authentication modes**:
->
-> - **Automatic** (Recommended): Provide basic cookies, `lsd` and `fb_dtsg` tokens are auto-fetched
-> - **Manual**: Optionally provide `lsd` and `fb_dtsg` tokens directly if automatic fetching fails
+> **💡 Note:** Only these 3 cookies are needed. No tokens (lsd/fb_dtsg) required!
 
 ### 🔄 Automatic Cookie Refresh
 
@@ -436,91 +453,57 @@ Run: python auto_refresh_cookies.py
 ```python
 from metaai_api import MetaAI
 
-# Your browser cookies
+# Your browser cookies (only 3 required!)
 cookies = {
     "datr": "your_datr_value_here",
     "abra_sess": "your_abra_sess_value_here",
-    "dpr": "1.25",
-    "wd": "1920x1080"
+    "ecto_1_sess": "your_ecto_1_sess_value_here"
 }
 
 # Initialize with cookies
 ai = MetaAI(cookies=cookies)
 
 # Generate a video
-result = ai.generate_video("A majestic lion walking through the African savanna at sunset")
+result = ai.generate_video_new("A majestic lion walking through the African savanna at sunset")
 
 if result["success"]:
     print("✅ Video generated successfully!")
-    print(f"🎬 Generated {len(result['video_urls'])} videos (Meta AI creates 4 by default)")
+    print(f"🎬 Generated {len(result['video_urls'])} videos")
     for i, url in enumerate(result['video_urls'], 1):
-        print(f"   Video {i}: {url}")
+        print(f"   Video {i}: {url[:80]}...")
     print(f"📝 Prompt: {result['prompt']}")
-    print(f"🆔 Conversation ID: {result['conversation_id']}")
 else:
-    print("⏳ Video is still processing, try again in a moment")
+    print("⏳ Video generation failed, check your cookies")
 ```
 
 **Output:**
 
 ```
-[*] Fetching missing tokens (lsd, fb_dtsg) from Meta AI...
-[✓] Fetched lsd: AVrvi8aHxzQ
-[✓] Fetched fb_dtsg: BQAB9uRXmPEYGkC...
-
 ✅ Sending video generation request...
 ✅ Video generation request sent successfully!
-⏳ Waiting 10 seconds before polling...
-🔄 Polling for video URLs (Attempt 1/30)...
+⏳ Waiting before polling...
+🔄 Polling for video URLs (Attempt 1/20)...
 ✅ Video URLs found!
 
 ✅ Video generated successfully!
-🎬 Generated 4 videos (Meta AI creates 4 by default)
+🎬 Generated 3 videos
    Video 1: https://scontent.xx.fbcdn.net/v/t66.36240-6/video1.mp4?...
    Video 2: https://scontent.xx.fbcdn.net/v/t66.36240-6/video2.mp4?...
    Video 3: https://scontent.xx.fbcdn.net/v/t66.36240-6/video3.mp4?...
-   Video 4: https://scontent.xx.fbcdn.net/v/t66.36240-6/video4.mp4?...
 📝 Prompt: A majestic lion walking through the African savanna at sunset
-🆔 Conversation ID: abc123-def456-ghi789
 ```
 
-### Example 1b: Manual Token Provision (Optional)
+### How to Get Your Cookies
 
-If automatic token fetching fails or you prefer to provide tokens directly:
-
-```python
-from metaai_api import MetaAI
-
-# Your browser cookies + manually extracted tokens
-cookies = {
-    "datr": "your_datr_value_here",
-    "abra_sess": "your_abra_sess_value_here",
-    "dpr": "1.25",
-    "wd": "1920x1080"
-}
-
-# Initialize with manual tokens (no auto-fetch needed)
-ai = MetaAI(
-    cookies=cookies,
-    lsd="AVq1234567890",              # Manually extracted lsd token
-    fb_dtsg="ABCD:EFGH:123456789"     # Manually extracted fb_dtsg token
-)
-
-# Generate a video - tokens are already provided!
-result = ai.generate_video("A peaceful zen garden with koi fish")
-
-if result["success"]:
-    print("✅ Video generated successfully with manual tokens!")
-    print(f"🎬 Video URL: {result['video_urls'][0]}")
-```
-
-**How to extract `lsd` and `fb_dtsg` tokens:**
-
-1. Open https://meta.ai in your browser (logged in)
-2. Press **F12** → **Console** tab
-3. Run: `document.cookie`
-4. Look for `lsd=...` and `fb_dtsg=...` values
-5. Alternatively, right-click → **View Page Source** → Search for `"LSD",[],{"token":"` and `DTSGInitData",[],{"token":"`
+1. Open https://meta.ai in your browser and login
+2. Press **F12** → **Application** tab
+3. Navigate to **Cookies** → `https://meta.ai`
+4. Copy these 3 values:
+   - `datr`
+   - `abra_sess`
+   - `ecto_1_sess`
+5. Add to your Python code or `.env` file
+6. Alternatively, right-click → **View Page Source** → Search for `"LSD",[],{"token":"` and `DTSGInitData",[],{"token":"`
 
 ### Example 2: Generate Multiple Videos
 
@@ -886,24 +869,26 @@ Store credentials securely:
 # .env file
 META_AI_DATR=your_datr_value
 META_AI_ABRA_SESS=your_abra_sess_value
-META_AI_DPR=1.25
-META_AI_WD=1920x1080
+META_AI_ECTO_1_SESS=your_ecto_1_sess_value
 ```
 
 Load in Python:
 
 ```python
-import os
-from dotenv import load_dotenv
 from metaai_api import MetaAI
 
-load_dotenv()
+# Automatically loads from environment variables
+ai = MetaAI()
 
+# Or manually load with dotenv
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 cookies = {
     "datr": os.getenv("META_AI_DATR"),
     "abra_sess": os.getenv("META_AI_ABRA_SESS"),
-    "dpr": os.getenv("META_AI_DPR"),
-    "wd": os.getenv("META_AI_WD")
+    "ecto_1_sess": os.getenv("META_AI_ECTO_1_SESS")
 }
 
 ai = MetaAI(cookies=cookies)

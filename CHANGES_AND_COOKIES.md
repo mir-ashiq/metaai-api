@@ -1,6 +1,20 @@
 # Meta AI API - Changes Summary & Cookie Requirements
 
-## 📝 Summary of Changes Made
+> ⚠️ **OUTDATED DOCUMENT - FOR HISTORICAL REFERENCE ONLY**
+>
+> This document describes the old cookie requirements from earlier versions.
+>
+> **Current simplified requirements (as of latest version):**
+>
+> - Only **3 cookies** needed: `datr`, `abra_sess`, `ecto_1_sess`
+> - No tokens (lsd/fb_dtsg) required
+> - No dpr, wd, ps_l, ps_n needed
+>
+> See [README.md](README.md) or [QUICK_START.md](QUICK_START.md) for current setup instructions.
+
+---
+
+## 📝 Summary of Changes Made (Historical)
 
 ### File: `src/metaai_api/generation.py`
 

@@ -6,12 +6,11 @@ This demonstrates the simplified API where MetaAI handles everything.
 from metaai_api import MetaAI
 import json
 
-# Your cookies (get from browser)
+# Your cookies (get from browser - only 3 required!)
 cookies = {
-    "datr": "datrcookie",
-    "wd": "1536x443",
-    "abra_sess": "abrasessioncookie",
-    "dpr": "1.25"
+    "datr": "your_datr_cookie",
+    "abra_sess": "your_abra_sess_cookie",
+    "ecto_1_sess": "your_ecto_1_sess_cookie"
 }
 
 print("="*80)
@@ -28,7 +27,7 @@ print("-" * 80)
 prompt = "Generate a realistic video of a beautiful sunset over the ocean"
 print(f"Prompt: {prompt}\n")
 
-result = ai.generate_video(prompt)
+result = ai.generate_video_new(prompt)
 
 if result["success"]:
     print(f"✅ Success!")
@@ -61,13 +60,7 @@ prompts = [
 for i, prompt in enumerate(prompts, 1):
     print(f"\n{i}. Generating: {prompt}")
     
-    result = ai.generate_video(
-        prompt=prompt,
-        wait_before_poll=5,    # Wait 5 seconds before polling
-        max_attempts=20,       # Try 20 times
-        wait_seconds=5,        # 5 seconds between attempts
-        verbose=False          # Don't print detailed status
-    )
+    result = ai.generate_video_new(prompt=prompt)
     
     if result["success"]:
         print(f"   ✅ Success! {len(result['video_urls'])} video(s) generated")
@@ -75,22 +68,13 @@ for i, prompt in enumerate(prompts, 1):
         print(f"   ⚠️  No videos yet (may still be processing)")
 
 
-# Example 3: Combine text chat with video generation
-print("\n[Example 3] Chat + Video Generation")
+# Example 3: Simple video generation with different prompt
+print("\n[Example 3] Another Video Example")
 print("-" * 80)
 
-# First, have a text conversation
-print("\nAsking Meta AI for ideas...")
-chat_response = ai.prompt(
-    "Give me 3 creative video ideas for nature scenes",
-    stream=False
-)
-print(f"Meta AI says: {chat_response['message'][:200]}...")
-
-# Then generate a video based on one of the ideas
-print("\nGenerating video from first idea...")
-video_result = ai.generate_video(
-    "Generate a video of a waterfall in a tropical rainforest"
+print("\nGenerating video...")
+video_result = ai.generate_video_new(
+    "A waterfall in a tropical rainforest"
 )
 
 if video_result["success"]:
@@ -102,16 +86,12 @@ print("\n[Example 4] Error Handling")
 print("-" * 80)
 
 try:
-    result = ai.generate_video(
-        prompt="Generate a video",
-        wait_before_poll=2,
-        max_attempts=3,  # Very short timeout
-        verbose=False
+    result = ai.generate_video_new(
+        prompt="A peaceful mountain landscape"
     )
     
     if not result["success"]:
-        print("⚠️  No videos found yet. Try again with longer timeout:")
-        print("   result = ai.generate_video(prompt, max_attempts=30, wait_seconds=5)")
+        print("⚠️  No videos found. Check your cookies and try again.")
 
 except Exception as e:
     print(f"❌ Error: {e}")
@@ -122,9 +102,9 @@ print("Examples Complete!")
 print("="*80)
 print("\n💡 Key Features:")
 print("   • MetaAI class handles everything")
-print("   • Automatic token fetching (lsd, fb_dtsg)")
-print("   • Same interface for chat and video generation")
+print("   • Cookie-based authentication (no tokens needed)")
+print("   • Simple generate_video_new() interface")
 print("   • Easy error handling")
 print("\n📝 Basic Usage:")
 print("   ai = MetaAI(cookies=cookies)")
-print("   result = ai.generate_video('your prompt')")
+print("   result = ai.generate_video_new('your prompt')")

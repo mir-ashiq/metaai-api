@@ -1,14 +1,20 @@
 """
 Practical Example: Product Photography Enhancement Pipeline
 
-This example demonstrates a real-world use case:
+⚠️ NOTE: This example uses chat/analysis features which are currently unavailable.
+For working examples, see:
+- simple_example.py - Image/video generation
+- image_upload_example.py - Image upload
+- video_generation.py - Video generation
+
+This example demonstrates the intended workflow (when chat becomes available):
 1. Upload a product photo
-2. Analyze the image
+2. Analyze the image (requires chat - currently unavailable)
 3. Generate improved versions in different styles
 4. Create promotional videos
 """
 
-from typing import Dict, Any, cast
+from typing import Dict, Any
 from metaai_api import MetaAI
 import json
 
@@ -16,18 +22,20 @@ import json
 def product_photography_pipeline():
     """
     Complete pipeline for enhancing product photography using Meta AI.
+    
+    Note: Image analysis via chat is currently unavailable.
+    Use generate_image_new() and generate_video_new() for generation only.
     """
     
     print("=" * 70)
     print("Product Photography Enhancement Pipeline")
     print("=" * 70)
     
-    # Initialize
+    # Initialize with only 3 required cookies
     ai = MetaAI(cookies={
         "datr": "your_datr_cookie",
         "abra_sess": "your_abra_sess_cookie",
-        "lsd": "your_lsd",
-        "fb_dtsg": "your_fb_dtsg",
+        "ecto_1_sess": "your_ecto_1_sess_cookie"
     })
     
     # Step 1: Upload product image

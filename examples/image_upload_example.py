@@ -16,14 +16,13 @@ def example_sdk_usage():
     print("Example 1: SDK Direct Usage")
     print("=" * 60)
     
-    # Initialize MetaAI with your cookies
-    # You can get these cookies from your browser after logging into meta.ai
+    # Initialize MetaAI with your cookies (only 3 required!)
+    # Get these from your browser after logging into meta.ai:
+    # F12 → Application → Cookies → https://meta.ai
     ai = MetaAI(cookies={
         "datr": "your_datr_cookie",
         "abra_sess": "your_abra_sess_cookie",
-        # Additional optional cookies
-        "dpr": "1.25",
-        "wd": "1528x732",
+        "ecto_1_sess": "your_ecto_1_sess_cookie"
     })
     
     # Upload an image

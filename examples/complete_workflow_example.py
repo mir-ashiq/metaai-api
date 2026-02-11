@@ -1,28 +1,31 @@
 """
-Complete workflow example: Upload image and use it in prompts.
+Complete workflow example: Upload image and use in generation.
 
-This demonstrates the full integration of image upload with Meta AI's
-chat, image generation, and video generation capabilities.
+⚠️ NOTE: Chat/analysis features are currently unavailable.
+This demonstrates the working features:
+- Image upload
+- Image generation
+- Video generation
+
+For chat functionality, see README about unavailable features.
 """
 
-from typing import Dict, Any, cast
 from metaai_api import MetaAI
 
 
 def complete_workflow_example():
-    """Complete workflow: Upload → Analyze → Generate → Create Video."""
+    """Complete workflow: Upload → Generate Images/Videos."""
     
     print("=" * 70)
-    print("Complete Workflow: Upload Image & Use in Prompts")
+    print("Complete Workflow: Upload Image & Generate Content")
     print("=" * 70)
     
-    # Step 1: Initialize MetaAI
+    # Step 1: Initialize MetaAI (only 3 cookies needed!)
     print("\n[Step 1] Initializing MetaAI...")
     ai = MetaAI(cookies={
         "datr": "your_datr_cookie",
         "abra_sess": "your_abra_sess_cookie",
-        "lsd": "your_lsd",
-        "fb_dtsg": "your_fb_dtsg",
+        "ecto_1_sess": "your_ecto_1_sess_cookie"
     })
     print("✓ MetaAI initialized")
     

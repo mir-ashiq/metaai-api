@@ -1,103 +1,157 @@
-# Quick Start Guide - Meta AI API Testing
+# Quick Start Guide - Meta AI API
 
 ## 🚀 Quick Reference
 
-### Status Summary
+### Status Summary (Updated: February 2026)
 
-✅ **Implementation**: 100% Complete  
-⚠️ **API Connectivity**: Blocked (empty responses)  
-📝 **Root Cause**: Likely expired cookies or API changes
-
----
-
-## 🔧 What To Do Now
-
-### Option 1: Update Your Cookies (RECOMMENDED)
-
-```bash
-# 1. Open https://meta.ai in your browser
-# 2. Press F12 to open DevTools
-# 3. Go to Application → Cookies → https://meta.ai
-# 4. Copy these cookie values:
-#    - datr
-#    - abra_sess
-#    - dpr
-#    - wd
-#
-# 5. Update .env file:
-META_AI_DATR=your_new_datr_value
-META_AI_ABRA_SESS=your_new_abra_sess_value
-META_AI_DPR=1
-META_AI_WD=1366x768
-
-# 6. Test it:
-cd c:\Users\spike\Downloads\meta-ai-api-main
-python test_simple.py
-```
-
-### Option 2: Verify Implementation Only
-
-```bash
-# Run mock test (doesn't need API)
-python test_mock.py
-
-# This will verify:
-✅ Cookie loading from .env
-✅ SSE response parsing
-✅ Media ID extraction
-✅ URL extraction
-✅ All new methods available
-```
-
-### Option 3: Full Integration Test
-
-```bash
-# Only if you have valid cookies
-python test_comprehensive.py
-
-# Tests:
-✅ Image generation
-✅ Video generation
-✅ Chat/prompting
-✅ Token management
-```
+✅ **Image Generation**: Fully Working  
+✅ **Video Generation**: Fully Working  
+✅ **Image Upload**: Fully Working  
+⚠️ **Chat Functionality**: Currently Unavailable (token authentication issues)  
+✅ **API Server**: Running and tested
 
 ---
 
-## 📊 Test Results Summary
+## 🎯 Working Features
 
-### ✅ Working Features
+### 1. Image Generation
 
-- Cookie loading from .env file
-- Cookie formatting for HTTP headers
-- SSE (Server-Sent Events) parsing
-- Media ID extraction from nested responses
-- Video/image URL extraction
-- Status polling for media completion
-- Exponential backoff retry logic
-- Response parsing (JSON & form-encoded)
+```python
+from metaai_api import MetaAI
 
-### ⚠️ Issue: Empty API Responses
+# Initialize with cookie-based authentication
+ai = MetaAI()
 
-When you run `test_simple.py`, you may see:
+# Generate images
+result = ai.generate_image_new(
+    prompt="a beautiful sunset over mountains",
+    orientation="LANDSCAPE"  # LANDSCAPE, VERTICAL, or SQUARE
+)
 
+if result["success"]:
+    for url in result["image_urls"]:
+        print(url)
 ```
-❌ Image Generation: JSON parse failed
-❌ Video Generation: JSON parse failed
+
+### 2. Video Generation
+
+```python
+from metaai_api import MetaAI
+
+ai = MetaAI()
+
+# Generate video
+result = ai.generate_video_new(
+    prompt="waves crashing on a beach"
+)
+
+if result["success"]:
+    for url in result["video_urls"]:
+        print(url)
 ```
 
-**This means**: The API is returning an empty response
+### 3. Use the API Server
 
-**Why this happens**:
+```bash
+# Start the server
+uvicorn metaai_api.api_server:app --host 127.0.0.1 --port 8000
 
-1. Cookies are expired (most likely)
-2. API requires fresh authentication
-3. Account is rate-limited
-4. Regional restrictions
+# Test endpoints
+curl http://127.0.0.1:8000/healthz
 
-**Solution**: Extract fresh cookies step-by-step above
+# Generate image
+curl -X POST http://127.0.0.1:8000/image \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "a red apple", "orientation": "LANDSCAPE"}'
+
+# Generate video
+curl -X POST http://127.0.0.1:8000/video \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "clouds in the sky"}'
+```
 
 ---
+
+## 🔧 Setup Requirements
+
+---
+
+## 🔧 Setup Requirements
+
+### Required Cookies
+
+You need valid Meta AI cookies in your `.env` file:
+
+```bash
+# From https://meta.ai (only 3 cookies required!)
+META_AI_DATR=your_datr_cookie
+META_AI_ABRA_SESS=your_abra_sess_cookie
+META_AI_ECTO_1_SESS=your_ecto_1_sess_cookie  # Most important for generation
+```
+
+### How to Get Cookies
+
+1. Open https://meta.ai in your browser and login
+2. Press **F12** to open DevTools
+3. Go to **Application** → **Cookies** → https://meta.ai
+4. Copy these 3 cookie values:
+   - `datr`
+   - `abra_sess`
+   - `ecto_1_sess`
+5. Create/update `.env` file in project root:
+
+```bash
+META_AI_DATR=your_datr_value
+META_AI_ABRA_SESS=your_abra_sess_value
+META_AI_ECTO_1_SESS=your_ecto_1_sess_value
+```
+
+### Test Your Setup
+
+```bash
+# Option 1: Use SDK directly
+python -c "from metaai_api import MetaAI; ai = MetaAI(); print('✅ Setup OK!')"
+
+# Option 2: Test with examples
+cd examples
+python simple_example.py
+```
+
+---
+
+## ⚠️ Known Issues
+
+### Chat Functionality Not Working
+
+**Issue**: Chat/prompt methods require `lsd` and `fb_dtsg` tokens which cause authentication loops.
+
+**Affected Methods**:
+
+- `ai.prompt()`
+- `ai.ask()`
+- Chat-related streaming
+
+**Workaround**: Use image and video generation features which don't require these tokens.
+
+**Status**: Under investigation. See [CHANGES_AND_COOKIES.md](CHANGES_AND_COOKIES.md) for technical details.
+
+---
+
+## 📊 Performance Notes
+
+- **Image Generation**: ~2 minutes per request (4 images)
+- **Video Generation**: ~40-60 seconds per request (3-4 videos)
+- **Polling Optimized**: 2-second intervals with progressive backoff
+- **Server Startup**: Instant (no token pre-fetching)
+
+---
+
+## 🔗 More Information
+
+- Full documentation: [README.md](README.md)
+- API details: [GENERATION_API.md](GENERATION_API.md)
+- Technical changes: [CHANGES_AND_COOKIES.md](CHANGES_AND_COOKIES.md)
+- Examples: [examples/](examples/) directory
 
 ## 💻 Code Integration Example
 
@@ -171,7 +225,7 @@ chat_result = api.prompt("What is AI?")
 ```
 Browser: https://meta.ai
 DevTools: F12 → Application → Cookies
-Copy: datr, abra_sess, dpr, wd
+Copy: datr, abra_sess, ecto_1_sess
 Add to: .env file
 ```
 

@@ -1,51 +1,69 @@
 from metaai_api import MetaAI
 
-# Your cookies from browser - lsd and fb_dtsg are automatically fetched!
-# Note: If you encounter challenges, you can also provide tokens manually:
-#   ai = MetaAI(cookies=cookies, lsd="your_lsd_token", fb_dtsg="your_fb_dtsg_token")
+# Your cookies from browser - only these 3 are required!
 cookies = {
-    "datr": "datrcookie",
-    "abra_sess": "abrasessioncookie",
-    "dpr": "1.25",
-    "wd": "1536x443"
+    "datr": "your_datr_cookie",
+    "abra_sess": "your_abra_sess_cookie",
+    "ecto_1_sess": "your_ecto_1_sess_cookie",  # Optional but recommended
 }
 
 print("="*80)
 print("Initializing MetaAI...")
 print("="*80)
 
-# Initialize once - tokens are automatically fetched
+# Initialize with cookie-based authentication
 ai = MetaAI(cookies=cookies)
 
 print("\n" + "="*80)
-print("Testing Chat Feature")
+print("WORKING FEATURES:")
+print("✅ Image Generation")
+print("✅ Video Generation")  
+print("✅ Image Upload")
+print("\nUNAVAILABLE FEATURES:")
+print("⚠️  Chat/Prompt (requires problematic tokens)")
 print("="*80)
 
-# Use for chat
-print("\nAsking: What's the weather in San Francisco?")
+print("\n" + "="*80)
+print("Testing Image Generation")
+print("="*80)
+
+# Generate an image
+print("\nGenerating image: 'A serene sunset over mountains'")
 try:
-    chat: dict = ai.prompt("What's the weather in San Francisco?", stream=False)  # type: ignore
-    print(f"\n✅ Chat Response:\n{chat['message'][:200]}...\n")
+    image_result = ai.generate_image_new(
+        prompt="A serene sunset over mountains",
+        orientation="LANDSCAPE",
+        num_images=1
+    )
+    
+    if image_result["success"]:
+        print(f"\n✅ Image generated successfully!")
+        print(f"URLs: {len(image_result['image_urls'])}")
+        for i, url in enumerate(image_result['image_urls'], 1):
+            print(f"  {i}. {url[:80]}...")
+    else:
+        print("\n⚠️ Image generation failed")
 except Exception as e:
-    print(f"❌ Chat Error: {e}\n")
+    print(f"❌ Image Generation Error: {e}\n")
 
-print("="*80)
+print("\n" + "="*80)
 print("Testing Video Generation")
 print("="*80)
 
-# Use for video generation
-print("\nGenerating video: 'Generate a video of a sunset over mountains'")
+# Generate a video
+print("\nGenerating video: 'A peaceful waterfall in a forest'")
 try:
-    video = ai.generate_video("Generate a video of a sunset over mountains")
+    video_result = ai.generate_video_new(
+        prompt="A peaceful waterfall in a forest"
+    )
 
-    if video["success"]:
+    if video_result["success"]:
         print(f"\n✅ Video generated successfully!")
-        print(f"Conversation ID: {video['conversation_id']}")
-        print(f"Video URLs: {len(video['video_urls'])}")
-        for i, url in enumerate(video['video_urls'], 1):
+        print(f"Video URLs: {len(video_result['video_urls'])}")
+        for i, url in enumerate(video_result['video_urls'], 1):
             print(f"  {i}. {url[:80]}...")
     else:
-        print("\n⚠️ No video URLs found (may still be processing)")
+        print("\n⚠️ Video generation failed")
 except Exception as e:
     print(f"❌ Video Generation Error: {e}")
 

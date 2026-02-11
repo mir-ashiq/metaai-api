@@ -1,13 +1,18 @@
 # Image and Video Generation API
 
+> **✅ Status: FULLY WORKING**  
+> Image and video generation features are operational and tested. See [QUICK_START.md](QUICK_START.md) for setup.
+
 This implementation is based on captured network requests from Meta AI's web interface for image and video generation.
 
 ## Features
 
-- **Image Generation**: Generate images from text prompts with custom orientation
-- **Video Generation**: Generate videos from text prompts
-- **Cookie-based Authentication**: Uses browser cookies from Meta AI
+- **Image Generation**: Generate images from text prompts with custom orientation ✅ Working
+- **Video Generation**: Generate videos from text prompts ✅ Working
+- **Image Upload**: Upload images for generation/editing ✅ Working
+- **Cookie-based Authentication**: Uses browser cookies from Meta AI (no `lsd`/`fb_dtsg` needed)
 - **Multipart Response Parsing**: Handles Meta AI's multipart/mixed responses
+- **Optimized Polling**: Fast 2-second intervals with progressive backoff
 
 ## Installation
 
@@ -27,20 +32,20 @@ pip install -e .
 
 2. Get your Meta AI cookies:
    - Open browser and go to https://meta.ai
+   - Login if needed
    - Open Developer Tools (F12)
    - Go to Application/Storage > Cookies > https://meta.ai
-   - Copy the values for: `datr`, `abra_sess`, `dpr`, `wd`, `c_user`, `xs`, `fr`
+   - Copy the values for: `datr`, `abra_sess`, `ecto_1_sess`
 
 3. Add cookies to `.env` file:
+
    ```env
    META_AI_DATR=your_datr_value
    META_AI_ABRA_SESS=your_abra_sess_value
-   META_AI_DPR=your_dpr_value
-   META_AI_WD=your_wd_value
-   META_AI_C_USER=your_c_user_value
-   META_AI_XS=your_xs_value
-   META_AI_FR=your_fr_value
+   META_AI_ECTO_1_SESS=your_ecto_1_sess_value
    ```
+
+   > **Note**: Only these 3 cookies are required for image/video generation. Other cookies like `lsd`, `fb_dtsg` are NOT needed.
 
 ## Usage
 
@@ -49,26 +54,28 @@ pip install -e .
 ```python
 from metaai_api import MetaAI
 
-# Initialize with cookies
+# Initialize with cookie-based authentication
+ai = MetaAI()
+
+# Or with explicit cookies
 cookies = {
     'datr': 'your_datr_value',
     'abra_sess': 'your_abra_sess_value',
-    'dpr': '1',
-    'wd': '1920x1080'
+    'ecto_1_sess': 'your_ecto_1_sess_value'
 }
-
 ai = MetaAI(cookies=cookies)
 
 # Generate image
 result = ai.generate_image_new(
     prompt="Astronaut in space",
-    orientation="VERTICAL",  # or "HORIZONTAL", "SQUARE"
+    orientation="LANDSCAPE",  # LANDSCAPE, VERTICAL, or SQUARE
     num_images=1
 )
 
 if result['success']:
+    print(f"Generated {len(result['image_urls'])} images:")
     for url in result['image_urls']:
-        print(f"Image URL: {url}")
+        print(f"  {url}")
 ```
 
 ### Video Generation
@@ -76,14 +83,15 @@ if result['success']:
 ```python
 from metaai_api import MetaAI
 
-# Initialize with cookies
+# Initialize with cookie-based authentication
+ai = MetaAI()
+
+# Or with explicit cookies
 cookies = {
     'datr': 'your_datr_value',
     'abra_sess': 'your_abra_sess_value',
-    'dpr': '1',
-    'wd': '1920x1080'
+    'ecto_1_sess': 'your_ecto_1_sess_value'
 }
-
 ai = MetaAI(cookies=cookies)
 
 # Generate video

@@ -1,15 +1,15 @@
 """
-Simple test to verify VideoGenerator with automatic token fetching.
-Only requires cookies - everything else is automatic!
+Simple test to verify VideoGenerator with cookie-based authentication.
+Only requires 3 cookies - simple and straightforward!
 """
 
 from metaai_api import VideoGenerator
 
-# Test cookies (replace with your actual cookies)
-COOKIES = "datr=datrcookie; wd=1536x443; abra_sess=abrasessioncookie; dpr=1.25"
+# Test cookies (replace with your actual cookies - only 3 required!)
+COOKIES = "datr=your_datr; abra_sess=your_abra_sess; ecto_1_sess=your_ecto_1_sess"
 
 print("="*80)
-print("Testing VideoGenerator with Automatic Token Fetching")
+print("Testing VideoGenerator with Cookie-Based Authentication")
 print("="*80)
 
 try:
@@ -17,14 +17,13 @@ try:
     print("\n[Test 1] Initializing with cookies string...")
     video_gen = VideoGenerator(cookies_str=COOKIES)
     print("✅ Initialization successful!")
-    print(f"   LSD: {video_gen.lsd}")
-    print(f"   FB_DTSG: {video_gen.fb_dtsg[:50]}...")
+    print("   Using cookie-based authentication")
     
     # Test 2: Quick generate method
     print("\n[Test 2] Testing quick_generate method...")
     result = VideoGenerator.quick_generate(
         cookies_str=COOKIES,
-        prompt="Generate a short video of a sunrise",
+        prompt="A short video of a sunrise",
         verbose=False
     )
     
@@ -38,10 +37,9 @@ try:
     # Test 3: Initialize with cookies dict
     print("\n[Test 3] Initializing with cookies dictionary...")
     cookies_dict = {
-        "datr": "datrcookie",
-        "wd": "1536x443",
-        "abra_sess": "abrasessioncookie",
-        "dpr": "1.25"
+        "datr": "your_datr_cookie",
+        "abra_sess": "your_abra_sess_cookie",
+        "ecto_1_sess": "your_ecto_1_sess_cookie"
     }
     video_gen2 = VideoGenerator(cookies_dict=cookies_dict)
     print("✅ Dictionary initialization successful!")

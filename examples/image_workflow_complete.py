@@ -1,22 +1,25 @@
-"""
+""" 
 Complete Image Upload Workflow Example
 
-Demonstrates all three use cases:
+⚠️ NOTE: Chat/analyze features are currently unavailable.
+This example demonstrates:
 1. Upload image
-2. Chat/analyze image
-3. Generate similar images
-4. Generate video from image
+2. Generate similar images (works)
+3. Generate video from image (works)
+
+For chat functionality, see note in README about unavailable features.
 """
 
 from metaai_api import MetaAI
 import os
 
 def main():
-    # Initialize Meta AI with cookies
-    # Replace these with your actual cookie values
+    # Initialize Meta AI with cookies (only 3 required!)
+    # Get these from browser: F12 → Application → Cookies → https://meta.ai
     ai = MetaAI(cookies={
         "datr": os.getenv("META_AI_DATR", "your_datr_cookie"),
         "abra_sess": os.getenv("META_AI_ABRA_SESS", "your_abra_sess_cookie"),
+        "ecto_1_sess": os.getenv("META_AI_ECTO_1_SESS", "your_ecto_1_sess_cookie"),
     })
     
     print("=" * 70)
@@ -82,13 +85,9 @@ def main():
     # Step 4: Generate Video
     print("\n🎬 Step 4: Generating video from image...")
     
-    video_result = ai.generate_video(
-        prompt="generate a video with zoom in effect on this image",
-        media_ids=[media_id],
-        attachment_metadata=attachment_metadata,
-        wait_before_poll=10,
-        max_attempts=30,
-        verbose=True
+    video_result = ai.generate_video_new(
+        prompt="zoom in effect on this image",
+        media_ids=[media_id]
     )
     
     if video_result["success"]:

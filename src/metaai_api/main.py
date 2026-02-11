@@ -30,8 +30,19 @@ MAX_RETRIES = 3
 
 class MetaAI:
     """
-    A class to interact with the Meta AI API to obtain and use access tokens for sending
-    and receiving messages from the Meta AI Chat API.
+    A class to interact with Meta AI for image and video generation.
+    
+    WORKING FEATURES:
+    - generate_image_new(): Generate AI images with custom orientations
+    - generate_video_new(): Create AI videos from text prompts
+    - upload_image(): Upload images for generation/editing
+    
+    UNAVAILABLE FEATURES:
+    - prompt() / ask(): Chat functionality (requires problematic lsd/fb_dtsg tokens)
+    - Streaming chat responses
+    - Real-time data queries
+    
+    Authentication: Uses cookie-based auth only (datr, abra_sess, ecto_1_sess)
     """
 
     def __init__(
@@ -39,10 +50,7 @@ class MetaAI:
         fb_email: Optional[str] = None, 
         fb_password: Optional[str] = None, 
         cookies: Optional[dict] = None, 
-        proxy: Optional[dict] = None,
-        lsd: Optional[str] = None,
-        fb_dtsg: Optional[str] = None,
-        skip_token_fetch: bool = False
+        proxy: Optional[dict] = None
     ):
         # Load .env file from workspace root
         env_path = Path(__file__).parent.parent.parent / ".env"
@@ -64,39 +72,18 @@ class MetaAI:
 
         self.is_authed = (fb_password is not None and fb_email is not None) or cookies is not None
         
-        # Store skip_token_fetch flag
-        self.skip_token_fetch = skip_token_fetch
-        
         # Try loading cookies from .env first if no cookies passed
         env_cookies = self._load_cookies_from_env()
         if env_cookies:
             self.cookies = env_cookies
-            logging.info("✅ Loaded cookies from .env file")
+            logging.info("✅ Loaded cookies from .env file (cookie-based auth only)")
             self.is_authed = True
-            # Note: lsd and fb_dtsg tokens are NOT needed for generation APIs
-            # They are only fetched on-demand for chat operations
         elif cookies is not None:
             self.cookies = cookies
-            logging.info("Using provided cookies")
-            # Add manually provided tokens if available
-            if lsd:
-                self.cookies["lsd"] = lsd
-            if fb_dtsg:
-                self.cookies["fb_dtsg"] = fb_dtsg
-            # Only fetch tokens if explicitly requested and not skipped
-            if not skip_token_fetch and ("lsd" not in self.cookies or "fb_dtsg" not in self.cookies):
-                try:
-                    self._fetch_missing_tokens()
-                except Exception as e:
-                    logging.warning(f"Could not fetch tokens: {e}. Continuing without them.")
+            logging.info("Using provided cookies (cookie-based auth only)")
         else:
             self.cookies = self.get_cookies()
             logging.info("Fetched cookies from Meta AI website")
-            # Override with manually provided tokens if available
-            if lsd:
-                self.cookies["lsd"] = lsd
-            if fb_dtsg:
-                self.cookies["fb_dtsg"] = fb_dtsg
             # Update is_authed if we successfully got cookies
             if self.cookies:
                 self.is_authed = True
@@ -257,119 +244,40 @@ class MetaAI:
         
         return False
 
+    # DEPRECATED: Token fetching removed - chat functionality unavailable
+    # Image and video generation use cookie-based authentication only
     def _fetch_missing_tokens(self, max_retries: int = 3):
         """
-        Fetch lsd and fb_dtsg tokens if they're missing from cookies.
-        Handles Meta AI challenge pages automatically.
+        DEPRECATED: This method is no longer used.
         
-        Args:
-            max_retries (int): Maximum number of retry attempts.
+        Token fetching (lsd/fb_dtsg) has been removed as it causes authentication
+        challenges and is not needed for working features (image/video generation).
+        Chat functionality that requires these tokens is currently unavailable.
         """
-        try:
-            session = HTMLSession()
-            # Set cookies on session object (not as header string)
-            session.cookies.update(self.cookies)
-            
-            headers = {
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.9",
-            }
-            
-            for attempt in range(max_retries):
-                logging.info(f"Fetching tokens from Meta AI (attempt {attempt + 1}/{max_retries})...")
-                response = session.get("https://meta.ai", headers=headers)
-                
-                # Check if we got a challenge page
-                challenge_url = detect_challenge_page(response.text)
-                if challenge_url:
-                    logging.warning(f"Meta AI returned a challenge page. Challenge URL: {challenge_url}")
-                    logging.warning(f"Calling handle_meta_ai_challenge with cookies_dict keys: {list(self.cookies.keys())}")
-                    challenge_result = handle_meta_ai_challenge(session, challenge_url=challenge_url, cookies_dict=self.cookies)
-                    logging.warning(f"Challenge handling result: {challenge_result}")
-                    if challenge_result:
-                        # Retry fetching tokens after handling challenge
-                        logging.warning("Re-fetching tokens after challenge resolution...")
-                        logging.warning(f"Cookies after challenge: {list(self.cookies.keys())}")
-                        response = session.get("https://meta.ai", headers=headers)
-                    else:
-                        logging.error("Failed to handle Meta AI challenge.")
-                        if attempt < max_retries - 1:
-                            logging.warning("Retrying...")
-                            time.sleep(2)
-                            continue
-                        else:
-                            logging.error("Max retries reached. Aborting token fetch.")
-                            break
-                
-                # Extract tokens from HTTP response - try multiple patterns
-                if "lsd" not in self.cookies:
-                    # Try JavaScript pattern first (original method)
-                    lsd = extract_value(response.text, start_str='"LSD",[],{"token":"', end_str='"}')  
-                    
-                    # If not found, try HTML input field pattern
-                    if not lsd:
-                        from bs4 import BeautifulSoup
-                        soup = BeautifulSoup(response.text, 'html.parser')
-                        lsd_input = soup.find("input", {"name": "lsd"})
-                        if lsd_input and lsd_input.get("value"):
-                            lsd = lsd_input["value"]  # type: ignore
-                    
-                    if lsd:
-                        self.cookies["lsd"] = lsd
-                        logging.info("Successfully fetched lsd token.")
-                    else:
-                        logging.warning("Could not extract lsd token from response.")
-                
-                if "fb_dtsg" not in self.cookies:
-                    # Try JavaScript pattern first (original method)
-                    fb_dtsg = extract_value(response.text, start_str='DTSGInitData",[],{"token":"', end_str='"')
-                    
-                    # If not found, try alternative patterns
-                    if not fb_dtsg:
-                        fb_dtsg = extract_value(response.text, start_str='"DTSGInitialData",[],{"token":"', end_str='"')
-                    if not fb_dtsg:
-                        fb_dtsg = extract_value(response.text, start_str='{"token":"', end_str='","async_get_token"')
-                    
-                    if fb_dtsg:
-                        self.cookies["fb_dtsg"] = fb_dtsg
-                        logging.info("Successfully fetched fb_dtsg token.")
-                    else:
-                        logging.warning("Could not extract fb_dtsg token from response.")
-                    if fb_dtsg:
-                        self.cookies["fb_dtsg"] = fb_dtsg
-                        logging.info("Successfully fetched fb_dtsg token.")
-                    else:
-                        logging.warning("Could not extract fb_dtsg token from response.")
-                
-                # Check if we got both tokens
-                if ("lsd" in self.cookies and self.cookies["lsd"]) and \
-                   ("fb_dtsg" in self.cookies and self.cookies["fb_dtsg"]):
-                    logging.info("Token fetch completed successfully.")
-                    break
-                    
-                if attempt < max_retries - 1:
-                    logging.warning(f"Tokens not fully fetched. Retrying in 2 seconds...")
-                    time.sleep(2)
-                    
-        except Exception as e:
-            logging.error(f"Error fetching tokens: {e}")
-            logging.warning("Some features may not work without lsd/fb_dtsg tokens.")
-            logging.info("Consider manually providing 'lsd' and 'fb_dtsg' tokens in the MetaAI constructor.")
+        logging.warning("Token fetching is deprecated and disabled. Use cookie-based auth only.")
+        logging.warning("Chat operations are not supported. Use generate_image_new() or generate_video_new() instead.")
 
     def get_access_token(self) -> str:
         """
-        Retrieves an access token using Meta's authentication API.
+        DEPRECATED: Retrieves an access token using Meta's authentication API.
+        
+        NOTE: Non-authenticated temporary access is currently unavailable.
+        Use cookie-based authentication instead with generate_image_new() or generate_video_new().
 
         Returns:
-            str: A valid access token.
+            str: A valid access token (if already cached), otherwise raises an error.
         """
+        
+        logging.warning("get_access_token() is deprecated. Non-authenticated access is unavailable.")
+        logging.warning("Use cookie-based authentication with generate_image_new() or generate_video_new().")
 
         if self.access_token:
             return self.access_token
 
+        # Legacy code kept for compatibility - will fail without proper cookies
         url = "https://www.meta.ai/api/graphql/"
         payload = {
-            "lsd": self.cookies["lsd"],
+            "lsd": self.cookies.get("lsd", ""),  # Safe access - won't crash if missing
             "fb_api_caller_class": "RelayModern",
             "fb_api_req_friendly_name": "useAbraAcceptTOSForTempUserMutation",
             "variables": {
@@ -382,8 +290,8 @@ class MetaAI:
         payload = urllib.parse.urlencode(payload)  # noqa
         headers = {
             "content-type": "application/x-www-form-urlencoded",
-            "cookie": f'_js_datr={self.cookies["_js_datr"]}; '
-            f'abra_csrf={self.cookies["abra_csrf"]}; datr={self.cookies["datr"]};',
+            "cookie": f'_js_datr={self.cookies.get("_js_datr", "")}; '
+            f'abra_csrf={self.cookies.get("abra_csrf", "")}; datr={self.cookies.get("datr", "")};',
             "sec-fetch-site": "same-origin",
             "x-fb-friendly-name": "useAbraAcceptTOSForTempUserMutation",
         }
@@ -421,7 +329,15 @@ class MetaAI:
         orientation: Optional[str] = None,
     ) -> Union[Dict, Generator[Dict, None, None]]:
         """
-        Sends a message to the Meta AI and returns the response.
+        DEPRECATED: Chat functionality is currently unavailable.
+        
+        Chat operations require lsd/fb_dtsg tokens which cause authentication challenges.
+        Use the working image and video generation methods instead:
+        - generate_image_new() for AI image generation
+        - generate_video_new() for AI video generation
+        
+        This method is kept for API compatibility but will not work for chat operations.
+        It may still be used internally for legacy image generation flows.
 
         Args:
             message (str): The message to send.
@@ -446,20 +362,12 @@ class MetaAI:
             url = "https://graph.meta.ai/graphql?locale=user"
 
         else:
-            # Handle case where fb_dtsg is not available
-            # Only fetch tokens if not skipped and this is a chat operation (not generation)
-            if not self.skip_token_fetch and not is_image_generation:
-                if "fb_dtsg" not in self.cookies or "lsd" not in self.cookies:
-                    logging.warning("Missing fb_dtsg or lsd tokens. Attempting to fetch them...")
-                    try:
-                        self._fetch_missing_tokens()
-                    except Exception as e:
-                        logging.error(f"Failed to fetch missing tokens: {e}")
-                        logging.warning("Proceeding without lsd/fb_dtsg tokens - chat operations may fail")
-            
+            # Chat functionality is currently unavailable
+            # This requires lsd/fb_dtsg tokens which cause authentication issues
+            logging.warning("Chat operations are not supported - use image/video generation instead")
             auth_payload = {
-                "fb_dtsg": self.cookies.get("fb_dtsg", ""),
-                "lsd": self.cookies.get("lsd", ""),
+                "fb_dtsg": "",
+                "lsd": "",
             }
             url = "https://www.meta.ai/api/graphql/"
 
@@ -1143,8 +1051,10 @@ class MetaAI:
         verbose: bool = True
     ) -> Dict:
         """
+        DEPRECATED: Use generate_video_new() instead for better reliability.
+        
         Generate a video from a text prompt using Meta AI.
-        Automatically fetches lsd and fb_dtsg tokens from cookies.
+        Uses cookie-based authentication.
 
         Args:
             prompt: Text prompt for video generation

@@ -62,9 +62,8 @@ class TokenCache:
             if not force and (time.time() - self._last_refresh) < REFRESH_SECONDS:
                 return
             try:
-                # Create MetaAI with skip_token_fetch=True to avoid unnecessary token fetching
-                ai = MetaAI(cookies=dict(self._cookies), skip_token_fetch=True)
-                # MetaAI won't fetch lsd/fb_dtsg with skip_token_fetch=True
+                # Create MetaAI with current cookies (cookie-based auth only)
+                ai = MetaAI(cookies=dict(self._cookies))
                 self._cookies = getattr(ai, "cookies", self._cookies)
                 self._last_refresh = time.time()
             except Exception as exc:  # noqa: BLE001
@@ -228,8 +227,8 @@ async def _shutdown() -> None:
 async def chat(body: ChatRequest) -> Dict[str, Any]:
     if body.stream:
         raise HTTPException(status_code=400, detail="Streaming not supported via HTTP JSON; set stream=false")
-    # Create MetaAI - it will load from .env. Chat needs tokens, so don't skip them
-    ai = MetaAI(proxy=_get_proxies(), skip_token_fetch=False)
+    # Create MetaAI - chat functionality is currently unavailable
+    ai = MetaAI(proxy=_get_proxies())
     try:
         return cast(Dict[str, Any], await run_in_threadpool(
             ai.prompt,
@@ -246,8 +245,8 @@ async def chat(body: ChatRequest) -> Dict[str, Any]:
 
 @app.post("/image")
 async def image(body: ImageRequest) -> Dict[str, Any]:
-    # Create MetaAI - generation APIs don't need lsd/fb_dtsg tokens
-    ai = MetaAI(proxy=_get_proxies(), skip_token_fetch=True)
+    # Create MetaAI - image generation uses cookie-based auth
+    ai = MetaAI(proxy=_get_proxies())
     try:
         # Use the new generation API that doesn't require fb_dtsg/lsd tokens
         result = await run_in_threadpool(
@@ -266,8 +265,8 @@ async def image(body: ImageRequest) -> Dict[str, Any]:
 
 @app.post("/video")
 async def video(body: VideoRequest) -> Dict[str, Any]:
-    # Create MetaAI - generation APIs don't need lsd/fb_dtsg tokens
-    ai = MetaAI(proxy=_get_proxies(), skip_token_fetch=True)
+    # Create MetaAI - video generation uses cookie-based auth
+    ai = MetaAI(proxy=_get_proxies())
     try:
         # Use the new generation API that doesn't require fb_dtsg/lsd tokens
         result = await run_in_threadpool(
@@ -316,8 +315,8 @@ async def upload_image(
         with open(temp_path, 'wb') as f:
             f.write(content)
         
-        # Initialize MetaAI - upload doesn't need lsd/fb_dtsg tokens
-        ai = MetaAI(proxy=_get_proxies(), skip_token_fetch=True)
+        # Initialize MetaAI - upload uses cookie-based auth
+        ai = MetaAI(proxy=_get_proxies())
         
         result = await run_in_threadpool(ai.upload_image, temp_path)
         
@@ -344,8 +343,8 @@ async def health() -> Dict[str, str]:
 async def _run_video_job(job_id: str, body: VideoRequest) -> None:
     logger.info(f"[JOB {job_id}] Starting video generation job")
     await jobs.set_running(job_id)
-    # Create MetaAI - generation APIs don't need lsd/fb_dtsg tokens
-    ai = MetaAI(proxy=_get_proxies(), skip_token_fetch=True)
+    # Create MetaAI - video generation uses cookie-based auth
+    ai = MetaAI(proxy=_get_proxies())
     try:
         logger.info(f"[JOB {job_id}] Calling generate_video_new with prompt: {body.prompt[:100]}...")
         result = await run_in_threadpool(

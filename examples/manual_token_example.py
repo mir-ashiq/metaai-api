@@ -1,33 +1,27 @@
 """
-Example: Using Meta AI API with Manual Token Provision
+DEPRECATED EXAMPLE
 
-This example demonstrates how to use the Meta AI API when encountering
-challenge page issues. You can manually extract and provide tokens to
-bypass the automatic token fetching.
+This example is no longer applicable. Manual token provision (lsd/fb_dtsg)
+has been removed from the library.
+
+The Meta AI API now uses cookie-based authentication only:
+- datr
+- abra_sess
+- ecto_1_sess (optional but recommended)
+
+For working examples, see:
+- simple_example.py - Basic image/video generation
+- image_upload_example.py - Image upload functionality
+- video_generation.py - Video generation examples
+
+Chat functionality requiring tokens is currently unavailable.
+Use generate_image_new() and generate_video_new() instead.
 """
 
-from typing import Dict
-from metaai_api import MetaAI
-
-# ============================================================================
-# Option 1: Let the library handle challenge pages automatically
-# ============================================================================
-print("Option 1: Automatic challenge handling\n" + "="*50)
-
-# Provide your cookies (extracted from browser)
-cookies = {
-    "datr": "your_datr_cookie",
-    "abra_sess": "your_abra_sess_cookie",
-    "dpr": "1.25",
-    "wd": "1536x730",
-    "abra_csrf": "your_abra_csrf_cookie"
-}
-
-# The library will automatically handle challenge pages and fetch tokens
-ai = MetaAI(cookies=cookies)
-
-# If successful, you can now use the API
-# Note: stream=False returns a Dict, stream=True returns a Generator
+print("⚠️  DEPRECATED: This example is no longer applicable.")
+print("\nManual token provision has been removed.")
+print("Use cookie-based authentication instead with generate_image_new() or generate_video_new().")
+print("\nSee simple_example.py for a working example.")
 response: Dict = ai.prompt("Hello, Meta AI!", stream=False)  # type: ignore
 print(f"Response: {response['message']}\n")
 
