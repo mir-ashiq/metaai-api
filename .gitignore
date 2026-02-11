@@ -98,6 +98,11 @@ TEST_UPDATES.md
 FINAL_RESULTS.md
 VIDEO_BREAKTHROUGH.md
 IMPLEMENTATION_SUMMARY.md
+
+# =========================
+# Archive folder (old tests, debug files, etc.)
+# =========================
+archive/
 DEPLOYMENT_FIX.md
 GITHUB_ISSUE_RESPONSE.md
 QUICK_FIX_GUIDE.md

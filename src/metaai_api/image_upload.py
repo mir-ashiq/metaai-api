@@ -6,8 +6,12 @@ Handles uploading images to Meta AI's rupload service.
 import os
 import uuid
 import mimetypes
+import logging
+import json
 from typing import Dict, Any, Optional
+from urllib.parse import quote, unquote
 
+logger = logging.getLogger(__name__)
 
 class ImageUploader:
     """Handles image upload to Meta AI using the rupload protocol."""
@@ -28,36 +32,35 @@ class ImageUploader:
     def upload_image(
         self,
         file_path: str,
-        fb_dtsg: str,
-        jazoest: str,
-        lsd: str,
-        rev: str = "1032041898",
-        s: str = "",
-        hsi: str = "",
     ) -> Optional[Dict[str, Any]]:
         """
-        Upload an image to Meta AI using the rupload protocol.
+        Upload an image to Meta AI using the rupload protocol with OAuth authentication.
         
         Args:
             file_path: Path to the image file
-            fb_dtsg: Facebook DTSG token from session
-            jazoest: Jazoest token from session
-            lsd: LSD token from session
-            rev: Revision parameter (optional)
-            s: Session parameter (optional)
-            hsi: HSI parameter (optional)
             
         Returns:
             Dictionary containing:
-                - success: bool
-                - media_id: str (if successful)
-                - upload_session_id: str
-                - file_name: str
-                - file_size: int
-                - mime_type: str
-                - error: str (if failed)
+                - success: bool - Whether the upload succeeded
+                - media_id: str - The uploaded image's media ID (use this in prompts)
+                - upload_session_id: str - Unique upload session ID
+                - file_name: str - Original filename
+                - file_size: int - File size in bytes
+                - mime_type: str - MIME type of the image
+                - error: str - Error message if upload failed
         """
         try:
+            # Extract ecto_1_sess for OAuth authentication
+            ecto_1_sess = self.cookies.get('ecto_1_sess')
+            if not ecto_1_sess:
+                return {
+                    "success": False,
+                    "error": "Missing ecto_1_sess cookie required for OAuth authentication. Please ensure cookies are properly set."
+                }
+            
+            # URL-decode the ecto_1_sess value (it may contain %3A for :, etc.)
+            ecto_1_sess_decoded = unquote(ecto_1_sess)
+            
             # Validate file exists
             if not os.path.exists(file_path):
                 return {
@@ -91,56 +94,40 @@ class ImageUploader:
             # Construct URL
             url = self.UPLOAD_URL.format(upload_session_id=upload_session_id)
             
-            # Common params used across requests
-            params = {
-                '__user': '0',
-                '__a': '1',
-                '__req': '12',
-                '__hs': '20468.HYP:kadabra_pkg.2.1...0',
-                'dpr': '1',
-                '__ccg': 'GOOD',
-                '__rev': rev,
-                '__s': s,
-                '__hsi': hsi,
-                '__dyn': '7xeUjG1mxu1syUqxemh0no6u5U4e2C1vzEdE98K360CEbo1nEhw2nVEtwMw6ywaq221FwpUO0n24oaEnxO0Bo7O2l0Fwqo31w9O1lwlE-U2zxe2GewbS361qw82dUlwhE-15wmo423-0j52oS0Io5d0bS1LBwNwKG0WE8oC1IwGw-wlUcE2-G2O7E5y1rwGwto461wwi85a0YU4G1Jw',
-                '__csr': 'g8YD5FTazFYJRlIyZcJ5FaWVuGWhaW8pWAhlTB8BVEydBhuazU98jxTDwpUWeJ0Tw05RAw6x4cXwHgbEUM0P4w1Cu2yQ0kQWxh11APwd2rC5j4gpx50K2UOgE6G9xd06QK0q20hu0VoWU1fo1i40xo2yJ0eK0uq8ymaDgdEn80zk0YC1o2UGkMn6jw7hw70Zw6twppn88jAKP0qrBka1K540JE2ZwjU50w0thwi82Ew0rFrxy0nO0jul7CgcK8Aw6QK2S19w5-w0N3gsye5VA',
-                'fb_dtsg': fb_dtsg,
-                'jazoest': jazoest,
-                'lsd': lsd,
-            }
-            
-            # Step 1: GET handshake (check if session exists)
-            get_headers = {
+            # Build headers with OAuth authentication (matching working curl)
+            headers = {
                 'accept': '*/*',
-                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0',
-            }
-            
-            # Perform GET check (mimics browser behavior)
-            self.session.get(url, params=params, cookies=self.cookies, headers=get_headers)
-            
-            # Step 2: POST upload
-            post_headers = {
-                'accept': '*/*',
-                'accept-language': 'en-US,en;q=0.9',
+                'accept-language': 'en-US,en;q=0.5',
+                'authorization': f'OAuth ecto1:{ecto_1_sess_decoded}',  # OAuth header with decoded ecto_1_sess
                 'desired_upload_handler': 'genai_document',
+                'ecto_auth_token': 'true',
                 'is_abra_user': 'true',
-                'offset': '0',  # Starting at the beginning of the file
-                'origin': 'https://www.meta.ai',
-                'referer': 'https://www.meta.ai/',
-                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0',
+                'offset': '0',
+                'origin': 'https://meta.ai',
+                'referer': 'https://meta.ai/',
+                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36',
                 'x-entity-length': str(file_size),
-                'x-entity-name': filename,
+                'x-entity-name': quote(filename, safe=''),  # URL-encode filename
                 'x-entity-type': mime_type,
-                'content-type': 'application/x-www-form-urlencoded',
             }
             
-            response = self.session.post(
+            logger.info(f"Uploading {filename} ({file_size} bytes, {mime_type}) to {url}")
+            logger.info(f"Using OAuth with ecto_1_sess: {ecto_1_sess_decoded[:50]}...")
+            
+            # Create a fresh session without cookies to avoid conflicts with OAuth header
+            import requests
+            upload_session = requests.Session()
+            
+            # POST upload using OAuth authentication only (no cookies)
+            response = upload_session.post(
                 url,
-                params=params,
-                cookies=self.cookies,
-                headers=post_headers,
-                data=file_data,
+                headers=headers,
+                data=file_data
             )
+            
+            logger.info(f"Upload response status: {response.status_code}")
+            if response.status_code != 200:
+                logger.error(f"Upload failed: {response.text[:500]}")
             
             response.raise_for_status()
             
@@ -149,6 +136,7 @@ class ImageUploader:
             
             # Check if media_id is in the response
             if 'media_id' in result:
+                logger.info(f"Upload successful! media_id: {result['media_id']}")
                 return {
                     "success": True,
                     "media_id": result['media_id'],
@@ -167,7 +155,90 @@ class ImageUploader:
                 }
             
         except Exception as e:
+            logger.error(f"Error uploading image: {e}")
             return {
                 "success": False,
                 "error": f"Error uploading image: {str(e)}"
             }
+
+    @staticmethod
+    def extract_media_id_from_response(response_data: Dict[str, Any]) -> Optional[str]:
+        """
+        Extract media_id from upload response, searching through nested structures.
+        
+        Args:
+            response_data: Response dictionary from upload API
+        
+        Returns:
+            Media ID if found, None otherwise
+        """
+        # Check direct media_id field
+        if 'media_id' in response_data:
+            media_id = response_data.get('media_id')
+            if media_id:
+                logger.info(f"Found media_id: {media_id}")
+                return media_id
+        
+        # Search through nested structures
+        def search_for_media_id(obj, depth=0):
+            if depth > 10:  # Prevent infinite recursion
+                return None
+                
+            if isinstance(obj, dict):
+                # Check common field names for media IDs
+                for key in ['mediaId', 'media_id', 'id', 'uploadId', 'entityId']:
+                    if key in obj and obj[key]:
+                        return obj[key]
+                
+                # Recursively search dict values
+                for value in obj.values():
+                    result = search_for_media_id(value, depth + 1)
+                    if result:
+                        return result
+            elif isinstance(obj, list):
+                # Search through list items
+                for item in obj:
+                    result = search_for_media_id(item, depth + 1)
+                    if result:
+                        return result
+            
+            return None
+        
+        media_id = search_for_media_id(response_data)
+        if media_id:
+            logger.info(f"Extracted media_id from nested response: {media_id}")
+            return media_id
+        
+        return None
+
+    @staticmethod
+    def parse_upload_response(response_text: str) -> Dict[str, Any]:
+        """
+        Parse upload response, handling various formats (JSON, form-encoded, etc.).
+        
+        Args:
+            response_text: Raw response text from upload endpoint
+        
+        Returns:
+            Parsed response as dictionary
+        """
+        if not response_text:
+            return {}
+        
+        # Try JSON first
+        try:
+            return json.loads(response_text)
+        except json.JSONDecodeError:
+            logger.warning("Response is not JSON, attempting to parse as form-encoded")
+        
+        # Try form-encoded format
+        try:
+            result = {}
+            for pair in response_text.split('&'):
+                if '=' in pair:
+                    key, value = pair.split('=', 1)
+                    result[key] = value
+            return result if result else {}
+        except Exception as e:
+            logger.warning(f"Failed to parse response as form-encoded: {e}")
+            return {}

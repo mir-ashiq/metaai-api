@@ -8,9 +8,10 @@ from pathlib import Path
 from typing import Any, Dict, Optional, cast
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, Form, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
+import time as time_module
 
 from metaai_api import MetaAI
 
@@ -39,10 +40,12 @@ class TokenCache:
         seed = {
             "datr": os.getenv("META_AI_DATR", ""),
             "abra_sess": os.getenv("META_AI_ABRA_SESS", ""),
+            "ecto_1_sess": os.getenv("META_AI_ECTO_1_SESS", ""),
             "dpr": os.getenv("META_AI_DPR", ""),
             "wd": os.getenv("META_AI_WD", ""),
             "_js_datr": os.getenv("META_AI_JS_DATR", ""),
             "abra_csrf": os.getenv("META_AI_ABRA_CSRF", ""),
+            "rd_challenge": os.getenv("META_AI_RD_CHALLENGE", ""),
         }
         missing = [k for k in ("datr", "abra_sess") if not seed.get(k)]
         if missing:
@@ -59,8 +62,9 @@ class TokenCache:
             if not force and (time.time() - self._last_refresh) < REFRESH_SECONDS:
                 return
             try:
-                ai = MetaAI(cookies=dict(self._cookies))
-                # MetaAI may fetch lsd/fb_dtsg; capture any updates
+                # Create MetaAI with skip_token_fetch=True to avoid unnecessary token fetching
+                ai = MetaAI(cookies=dict(self._cookies), skip_token_fetch=True)
+                # MetaAI won't fetch lsd/fb_dtsg with skip_token_fetch=True
                 self._cookies = getattr(ai, "cookies", self._cookies)
                 self._last_refresh = time.time()
             except Exception as exc:  # noqa: BLE001
@@ -79,6 +83,22 @@ class TokenCache:
 cache = TokenCache()
 refresh_task: Optional[asyncio.Task] = None
 app = FastAPI(title="Meta AI API Service", version="0.1.0")
+
+
+# Middleware to log all requests
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time_module.time()
+    logger.warning(f"[REQUEST] {request.method} {request.url.path} - Content-Type: {request.headers.get('content-type', 'none')}")
+    
+    try:
+        response = await call_next(request)
+        process_time = time_module.time() - start_time
+        logger.warning(f"[RESPONSE] {request.method} {request.url.path} - Status: {response.status_code} - Time: {process_time:.2f}s")
+        return response
+    except Exception as exc:
+        logger.error(f"[ERROR] {request.method} {request.url.path} - {exc}")
+        raise
 
 
 def _get_proxies() -> Optional[Dict[str, str]]:
@@ -188,7 +208,9 @@ async def get_cookies() -> Dict[str, str]:
 @app.on_event("startup")
 async def _startup() -> None:
     await cache.load_seed()
-    await cache.refresh_if_needed(force=True)
+    # Skip initial refresh to avoid unnecessary token fetching
+    # Tokens will be refreshed on-demand if needed
+    # await cache.refresh_if_needed(force=True)
     global refresh_task
     refresh_task = asyncio.create_task(_refresh_loop())
 
@@ -203,10 +225,11 @@ async def _shutdown() -> None:
 
 
 @app.post("/chat")
-async def chat(body: ChatRequest, cookies: Dict[str, str] = Depends(get_cookies)) -> Dict[str, Any]:
+async def chat(body: ChatRequest) -> Dict[str, Any]:
     if body.stream:
         raise HTTPException(status_code=400, detail="Streaming not supported via HTTP JSON; set stream=false")
-    ai = MetaAI(cookies=cookies, proxy=_get_proxies())
+    # Create MetaAI - it will load from .env. Chat needs tokens, so don't skip them
+    ai = MetaAI(proxy=_get_proxies(), skip_token_fetch=False)
     try:
         return cast(Dict[str, Any], await run_in_threadpool(
             ai.prompt,
@@ -222,60 +245,47 @@ async def chat(body: ChatRequest, cookies: Dict[str, str] = Depends(get_cookies)
 
 
 @app.post("/image")
-async def image(body: ImageRequest, cookies: Dict[str, str] = Depends(get_cookies)) -> Dict[str, Any]:
-    ai = MetaAI(cookies=cookies, proxy=_get_proxies())
+async def image(body: ImageRequest) -> Dict[str, Any]:
+    # Create MetaAI - generation APIs don't need lsd/fb_dtsg tokens
+    ai = MetaAI(proxy=_get_proxies(), skip_token_fetch=True)
     try:
-        # Automatically prepend "generate image of" to the prompt
-        prompt = f"generate image of {body.prompt}" if not body.prompt.lower().startswith(("generate image", "create image")) else body.prompt
-        return cast(Dict[str, Any], await run_in_threadpool(
-            ai.prompt,
-            prompt,
-            stream=False,
-            new_conversation=body.new_conversation,
+        # Use the new generation API that doesn't require fb_dtsg/lsd tokens
+        result = await run_in_threadpool(
+            ai.generate_image_new,
+            prompt=body.prompt,
+            orientation=body.orientation or "VERTICAL",
+            num_images=1,
             media_ids=body.media_ids,
-            attachment_metadata=body.attachment_metadata,
-            is_image_generation=True,  # Image generation uses DISCOVER entrypoint
-            orientation=body.orientation  # Support VERTICAL, HORIZONTAL, SQUARE
-        ))
+            attachment_metadata=body.attachment_metadata
+        )
+        return cast(Dict[str, Any], result)
     except Exception as exc:  # noqa: BLE001
         await cache.refresh_after_error()
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.post("/video")
-async def video(body: VideoRequest, cookies: Dict[str, str] = Depends(get_cookies)) -> Dict[str, Any]:
-    # Force refresh cookies before video generation for best results
-    await cache.refresh_if_needed(force=True)
-    cookies = await cache.snapshot()
-    
-    ai = MetaAI(cookies=cookies, proxy=_get_proxies())
+async def video(body: VideoRequest) -> Dict[str, Any]:
+    # Create MetaAI - generation APIs don't need lsd/fb_dtsg tokens
+    ai = MetaAI(proxy=_get_proxies(), skip_token_fetch=True)
     try:
-        # Automatically prepend "generate a video" to the prompt
-        prompt = f"generate a video {body.prompt}" if not body.prompt.lower().startswith(("generate a video", "generate video", "create a video", "create video")) else body.prompt
-        return await run_in_threadpool(
-            ai.generate_video,
-            prompt,
-            body.media_ids,
-            body.attachment_metadata,
-            body.orientation,
-            body.wait_before_poll,
-            body.max_attempts,
-            body.wait_seconds,
-            body.verbose,
+        # Use the new generation API that doesn't require fb_dtsg/lsd tokens
+        result = await run_in_threadpool(
+            ai.generate_video_new,
+            prompt=body.prompt,
+            media_ids=body.media_ids,
+            attachment_metadata=body.attachment_metadata
         )
+        return cast(Dict[str, Any], result)
     except Exception as exc:  # noqa: BLE001
         await cache.refresh_after_error()
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.post("/video/async")
-async def video_async(body: VideoRequest, cookies: Dict[str, str] = Depends(get_cookies)) -> Dict[str, str]:
-    # Force refresh cookies before video generation
-    await cache.refresh_if_needed(force=True)
-    cookies = await cache.snapshot()
-    
+async def video_async(body: VideoRequest) -> Dict[str, str]:
     job = await jobs.create()
-    asyncio.create_task(_run_video_job(job.job_id, body, cookies))
+    asyncio.create_task(_run_video_job(job.job_id, body))
     return {"job_id": job.job_id, "status": "pending"}
 
 
@@ -290,8 +300,7 @@ async def video_job_status(job_id: str) -> Dict[str, Any]:
 
 @app.post("/upload")
 async def upload_image(
-    file: UploadFile = File(...),
-    cookies: Dict[str, str] = Depends(get_cookies)
+    file: UploadFile = File(...)
 ) -> Dict[str, Any]:
     """Upload an image to Meta AI for use in conversations or media generation."""
     import tempfile
@@ -307,8 +316,9 @@ async def upload_image(
         with open(temp_path, 'wb') as f:
             f.write(content)
         
-        # Initialize MetaAI with cookies and upload
-        ai = MetaAI(cookies=cookies, proxy=_get_proxies())
+        # Initialize MetaAI - upload doesn't need lsd/fb_dtsg tokens
+        ai = MetaAI(proxy=_get_proxies(), skip_token_fetch=True)
+        
         result = await run_in_threadpool(ai.upload_image, temp_path)
         
         return cast(Dict[str, Any], result)
@@ -331,22 +341,18 @@ async def health() -> Dict[str, str]:
     return {"status": "ok"}
 
 
-async def _run_video_job(job_id: str, body: VideoRequest, cookies: Dict[str, str]) -> None:
+async def _run_video_job(job_id: str, body: VideoRequest) -> None:
     logger.info(f"[JOB {job_id}] Starting video generation job")
     await jobs.set_running(job_id)
-    ai = MetaAI(cookies=cookies, proxy=_get_proxies())
+    # Create MetaAI - generation APIs don't need lsd/fb_dtsg tokens
+    ai = MetaAI(proxy=_get_proxies(), skip_token_fetch=True)
     try:
-        logger.info(f"[JOB {job_id}] Calling generate_video with prompt: {body.prompt[:100]}...")
+        logger.info(f"[JOB {job_id}] Calling generate_video_new with prompt: {body.prompt[:100]}...")
         result = await run_in_threadpool(
-            ai.generate_video,
-            body.prompt,
-            body.media_ids,
-            body.attachment_metadata,
-            body.orientation,
-            body.wait_before_poll,
-            body.max_attempts,
-            body.wait_seconds,
-            body.verbose,
+            ai.generate_video_new,
+            prompt=body.prompt,
+            media_ids=body.media_ids,
+            attachment_metadata=body.attachment_metadata
         )
         
         logger.info(f"[JOB {job_id}] Video generation completed")

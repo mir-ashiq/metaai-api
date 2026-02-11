@@ -1,10 +1,14 @@
 import json
-from typing import Dict, List
+import logging
+from typing import Dict, List, Optional
 
 import requests
 
+logger = logging.getLogger(__name__)
+
 
 def _parse_cookie_header(raw_cookie: str) -> Dict[str, str]:
+    """Parse cookie string into dictionary."""
     parts = [p.strip() for p in raw_cookie.split(";") if p.strip()]
     cookies: Dict[str, str] = {}
     for part in parts:
@@ -15,9 +19,34 @@ def _parse_cookie_header(raw_cookie: str) -> Dict[str, str]:
     return cookies
 
 
-def send_animate_request(user_cookie_header: str, prompt: str) -> Dict:
-    """Send a prompt to Meta AI's animate endpoint using provided cookies."""
+def send_animate_request(
+    user_cookie_header: str, 
+    prompt: str,
+    fb_dtsg: Optional[str] = None,
+    lsd: Optional[str] = None,
+    jazoest: Optional[str] = None
+) -> Dict:
+    """
+    Send a prompt to Meta AI's animate endpoint using provided cookies.
+    
+    Args:
+        user_cookie_header: Cookie header string (e.g., "datr=...; abra_sess=...")
+        prompt: Text prompt for animation/video generation
+        fb_dtsg: Optional Facebook DTSG token. If not provided, uses placeholder.
+        lsd: Optional LSD token. If not provided, uses placeholder.
+        jazoest: Optional jazoest token. If not provided, uses placeholder.
+    
+    Returns:
+        Response JSON from Meta AI API
+    """
     cookies = _parse_cookie_header(user_cookie_header)
+    
+    # Use provided tokens or fallback to placeholders
+    fb_dtsg = fb_dtsg or "NAfs8i5CfuTxSgY049krPWfh6MLk1zW--f6qnzvqgeEaPvOWcpH_esA:2:1763623145"
+    lsd = lsd or "MMUBfnMuJ_zHq68M_QsA9p"
+    jazoest = jazoest or "25561"
+    
+    logger.info(f"Sending animate request with prompt: {prompt[:50]}...")
 
     headers = {
         "accept": "*/*",
@@ -38,14 +67,14 @@ def send_animate_request(user_cookie_header: str, prompt: str) -> Dict:
         "sec-gpc": "1",
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
         "x-asbd-id": "359341",
-        "x-fb-lsd": "MMUBfnMuJ_zHq68M_QsA9p",
+        "x-fb-lsd": lsd,
         "cookie": user_cookie_header,
     }
 
     params = {
-        "fb_dtsg": "NAfs8i5CfuTxSgY049krPWfh6MLk1zW--f6qnzvqgeEaPvOWcpH_esA:2:1763623145",
-        "jazoest": "25561",
-        "lsd": "MMUBfnMuJ_zHq68M_QsA9p",
+        "fb_dtsg": fb_dtsg,
+        "jazoest": jazoest,
+        "lsd": lsd,
     }
 
     variables = json.dumps({"message": {"sensitive_string_value": prompt}})
@@ -67,9 +96,9 @@ def send_animate_request(user_cookie_header: str, prompt: str) -> Dict:
         "__hblp": (None, ""),
         "__sjsp": (None, ""),
         "__comet_req": (None, "72"),
-        "fb_dtsg": (None, "NAfs8i5CfuTxSgY049krPWfh6MLk1zW--f6qnzvqgeEaPvOWcpH_esA:2:1763623145"),
-        "jazoest": (None, "25561"),
-        "lsd": (None, "MMUBfnMuJ_zHq68M_QsA9p"),
+        "fb_dtsg": (None, fb_dtsg),
+        "jazoest": (None, jazoest),
+        "lsd": (None, lsd),
         "__spin_r": (None, "1030167105"),
         "__spin_b": (None, "trunk"),
         "__spin_t": (None, "1763641598"),
@@ -82,15 +111,20 @@ def send_animate_request(user_cookie_header: str, prompt: str) -> Dict:
         "doc_id": (None, "26069859009269605"),
     }
 
-    response = requests.post(
-        "https://www.meta.ai/api/graphql/",
-        params=params,
-        cookies=cookies,
-        headers=headers,
-        data=data,
-    )
-    response.raise_for_status()
-    return response.json()
+    try:
+        response = requests.post(
+            "https://www.meta.ai/api/graphql/",
+            params=params,
+            cookies=cookies,
+            headers=headers,
+            data=data,
+        )
+        response.raise_for_status()
+        logger.info("Animate request sent successfully")
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error sending animate request: {e}")
+        raise
 
 
 def extract_video_urls_from_fetch_response(fetch_response: Dict) -> List[str]:

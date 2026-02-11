@@ -404,6 +404,33 @@ Create AI-generated videos from text descriptions!
 > - **Automatic** (Recommended): Provide basic cookies, `lsd` and `fb_dtsg` tokens are auto-fetched
 > - **Manual**: Optionally provide `lsd` and `fb_dtsg` tokens directly if automatic fetching fails
 
+### 🔄 Automatic Cookie Refresh
+
+Cookies (especially `ecto_1_sess`) expire periodically. The SDK now includes **automatic cookie refresh** scripts!
+
+#### Option 1: Manual Export (Recommended)
+
+```bash
+# 1. In your browser: Copy as cURL → save as curl.json
+# 2. Run the extractor
+python refresh_cookies.py
+```
+
+#### When to Refresh?
+
+The SDK automatically detects expired cookies and will show:
+
+```
+❌ Cookie Expired: ecto_1_sess needs to be refreshed
+Run: python auto_refresh_cookies.py
+```
+
+**Key Cookies:**
+
+- `ecto_1_sess` ⭐ - Session token (expires frequently, **must refresh**)
+- `rd_challenge` - Challenge cookie (auto-updated by SDK)
+- `ps_l`, `ps_n` - Portal flags (required for generation)
+
 ### Example 1: Generate Your First Video
 
 ```python

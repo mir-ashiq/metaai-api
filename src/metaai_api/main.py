@@ -1,11 +1,14 @@
 import json
 import logging
+import os
 import time
 import urllib.parse
 import uuid
+from pathlib import Path
 from typing import Dict, List, Generator, Iterator, Optional, Union, Any
 
 import requests
+from dotenv import load_dotenv
 from requests_html import HTMLSession
 
 from metaai_api.utils import (
@@ -38,8 +41,15 @@ class MetaAI:
         cookies: Optional[dict] = None, 
         proxy: Optional[dict] = None,
         lsd: Optional[str] = None,
-        fb_dtsg: Optional[str] = None
+        fb_dtsg: Optional[str] = None,
+        skip_token_fetch: bool = False
     ):
+        # Load .env file from workspace root
+        env_path = Path(__file__).parent.parent.parent / ".env"
+        if env_path.exists():
+            load_dotenv(env_path)
+            logging.info(f"Loaded .env from: {env_path}")
+        
         self.session = get_session()
         self.session.headers.update(
             {
@@ -54,25 +64,41 @@ class MetaAI:
 
         self.is_authed = (fb_password is not None and fb_email is not None) or cookies is not None
         
-        if cookies is not None:
+        # Store skip_token_fetch flag
+        self.skip_token_fetch = skip_token_fetch
+        
+        # Try loading cookies from .env first if no cookies passed
+        env_cookies = self._load_cookies_from_env()
+        if env_cookies:
+            self.cookies = env_cookies
+            logging.info("✅ Loaded cookies from .env file")
+            self.is_authed = True
+            # Note: lsd and fb_dtsg tokens are NOT needed for generation APIs
+            # They are only fetched on-demand for chat operations
+        elif cookies is not None:
             self.cookies = cookies
+            logging.info("Using provided cookies")
             # Add manually provided tokens if available
             if lsd:
                 self.cookies["lsd"] = lsd
             if fb_dtsg:
                 self.cookies["fb_dtsg"] = fb_dtsg
-            # Auto-fetch lsd and fb_dtsg if not present in cookies
-            if "lsd" not in self.cookies or "fb_dtsg" not in self.cookies:
-                self._fetch_missing_tokens()
+            # Only fetch tokens if explicitly requested and not skipped
+            if not skip_token_fetch and ("lsd" not in self.cookies or "fb_dtsg" not in self.cookies):
+                try:
+                    self._fetch_missing_tokens()
+                except Exception as e:
+                    logging.warning(f"Could not fetch tokens: {e}. Continuing without them.")
         else:
             self.cookies = self.get_cookies()
+            logging.info("Fetched cookies from Meta AI website")
             # Override with manually provided tokens if available
             if lsd:
                 self.cookies["lsd"] = lsd
             if fb_dtsg:
                 self.cookies["fb_dtsg"] = fb_dtsg
             # Update is_authed if we successfully got cookies
-            if self.cookies and "lsd" in self.cookies and "fb_dtsg" in self.cookies:
+            if self.cookies:
                 self.is_authed = True
             
         self.external_conversation_id = None
@@ -80,6 +106,156 @@ class MetaAI:
         
         # Initialize Generation API
         self.generation_api = GenerationAPI(session=self.session, cookies=self.cookies)
+
+    def _load_cookies_from_env(self) -> Optional[Dict[str, str]]:
+        """
+        Load cookies from environment variables (META_AI_* prefix).
+        
+        CRITICAL: ecto_1_sess is the primary session token and must be present.
+        
+        Environment variables expected:
+        - META_AI_DATR: Required - Device identifier cookie
+        - META_AI_ABRA_SESS: Required - Session cookie
+        - META_AI_ECTO_1_SESS: Critical - Session state token (MOST IMPORTANT)
+        - META_AI_DPR: Optional - Device pixel ratio
+        - META_AI_WD: Optional - Window dimensions
+        - META_AI_JS_DATR: Optional - JavaScript datr
+        - META_AI_ABRA_CSRF: Optional - CSRF token
+        - META_AI_PS_L: Optional - Page state (usually 1)
+        - META_AI_PS_N: Optional - Page state (usually 1)
+        - META_AI_RD_CHALLENGE: Optional - Challenge cookie
+        
+        Returns:
+            dict or None: Cookie dictionary if at least required cookies are found, None otherwise
+        """
+        required_cookies = {
+            "datr": os.getenv("META_AI_DATR"),
+            "abra_sess": os.getenv("META_AI_ABRA_SESS"),
+        }
+        
+        # Check if required cookies are present
+        if not (required_cookies["datr"] and required_cookies["abra_sess"]):
+            return None
+        
+        # Build complete cookie dict with required cookies
+        cookies = {
+            "datr": required_cookies["datr"],
+            "abra_sess": required_cookies["abra_sess"],
+        }
+        
+        # Add critical session cookie (MOST IMPORTANT)
+        ecto_session = os.getenv("META_AI_ECTO_1_SESS")
+        if ecto_session:
+            cookies["ecto_1_sess"] = ecto_session
+            logging.debug("Critical ecto_1_sess cookie loaded")
+        else:
+            logging.warning("META_AI_ECTO_1_SESS not found - API may return empty responses")
+        
+        # Add optional cookies if present
+        optional_cookies = {
+            "dpr": os.getenv("META_AI_DPR"),
+            "wd": os.getenv("META_AI_WD"),
+            "_js_datr": os.getenv("META_AI_JS_DATR"),
+            "abra_csrf": os.getenv("META_AI_ABRA_CSRF"),
+            "rd_challenge": os.getenv("META_AI_RD_CHALLENGE"),
+            "ps_l": os.getenv("META_AI_PS_L"),
+            "ps_n": os.getenv("META_AI_PS_N"),
+        }
+        
+        for key, value in optional_cookies.items():
+            if value:
+                cookies[key] = value
+        
+        logging.info(f"Cookies loaded from .env: {list(cookies.keys())}")
+        return cookies
+
+    def get_cookies_dict(self) -> Dict[str, str]:
+        """
+        Get cookies as a dictionary.
+        
+        Returns:
+            dict: Cookie dictionary
+        """
+        return self.cookies.copy() if self.cookies else {}
+
+    def get_cookie_header(self) -> str:
+        """
+        Get cookies formatted as a Cookie header string.
+        
+        Returns:
+            str: Cookie header value (e.g., "datr=abc; abra_sess=def; ...")
+        """
+        if not self.cookies:
+            return ""
+        return "; ".join([f"{k}={v}" for k, v in self.cookies.items()])
+
+    def _handle_expired_session(self, error_msg: str = ""):
+        """
+        Handle expired ecto_1_sess cookie and provide user guidance.
+        
+        Args:
+            error_msg (str): Optional error message from the API response
+        """
+        logging.error("="*70)
+        logging.error("❌ Cookie Expired: ecto_1_sess needs to be refreshed")
+        logging.error("="*70)
+        logging.error("")
+        logging.error("Your session cookie (ecto_1_sess) has expired.")
+        logging.error("")
+        logging.error("To get fresh cookies, choose one of these methods:")
+        logging.error("")
+        logging.error("METHOD 1 (Automatic - Recommended):")
+        logging.error("   Run: python auto_refresh_cookies.py")
+        logging.error("   This will open a browser, let you log in, and extract cookies automatically.")
+        logging.error("")
+        logging.error("METHOD 2 (Manual - Quick):")
+        logging.error("   1. Open https://meta.ai in your browser and log in")
+        logging.error("   2. Open DevTools (F12) → Network tab")
+        logging.error("   3. Generate an image or perform any action")
+        logging.error("   4. Right-click the 'graphql' request → Copy → Copy as cURL")
+        logging.error("   5. Save to curl.json")
+        logging.error("   6. Run: python refresh_cookies.py")
+        logging.error("")
+        logging.error("="*70)
+        
+        if error_msg:
+            logging.debug(f"API Error: {error_msg}")
+
+    def _check_response_for_auth_error(self, response: requests.Response) -> bool:
+        """
+        Check if API response indicates expired/invalid authentication.
+        
+        Args:
+            response: requests Response object
+            
+        Returns:
+            bool: True if authentication error detected, False otherwise
+        """
+        # Check for 403 Forbidden
+        if response.status_code == 403:
+            self._handle_expired_session("403 Forbidden - session expired")
+            return True
+        
+        # Check response content for auth errors
+        try:
+            if response.text:
+                error_indicators = [
+                    "Access token required",
+                    "authentication",
+                    "unauthorized",
+                    "invalid session",
+                    "session expired"
+                ]
+                
+                response_lower = response.text.lower()
+                for indicator in error_indicators:
+                    if indicator in response_lower:
+                        self._handle_expired_session(f"Auth error detected: {indicator}")
+                        return True
+        except:
+            pass
+        
+        return False
 
     def _fetch_missing_tokens(self, max_retries: int = 3):
         """
@@ -270,8 +446,19 @@ class MetaAI:
             url = "https://graph.meta.ai/graphql?locale=user"
 
         else:
+            # Handle case where fb_dtsg is not available
+            # Only fetch tokens if not skipped and this is a chat operation (not generation)
+            if not self.skip_token_fetch and not is_image_generation:
+                if "fb_dtsg" not in self.cookies or "lsd" not in self.cookies:
+                    logging.warning("Missing fb_dtsg or lsd tokens. Attempting to fetch them...")
+                    try:
+                        self._fetch_missing_tokens()
+                    except Exception as e:
+                        logging.error(f"Failed to fetch missing tokens: {e}")
+                        logging.warning("Proceeding without lsd/fb_dtsg tokens - chat operations may fail")
+            
             auth_payload = {
-                "fb_dtsg": self.cookies["fb_dtsg"],
+                "fb_dtsg": self.cookies.get("fb_dtsg", ""),
                 "lsd": self.cookies.get("lsd", ""),
             }
             url = "https://www.meta.ai/api/graphql/"
@@ -464,6 +651,11 @@ class MetaAI:
                 self.session.proxies = self.proxy
 
         response = self.session.post(url, headers=headers, data=payload, stream=stream)
+        
+        # Check for authentication errors (expired ecto_1_sess)
+        if self._check_response_for_auth_error(response):
+            raise Exception("Authentication failed - please refresh cookies using auto_refresh_cookies.py or refresh_cookies.py")
+        
         if not stream:
             raw_response = response.text
             last_streamed_response = self.extract_last_response(raw_response)
@@ -872,7 +1064,9 @@ class MetaAI:
             )
             
             # Extract image URLs
-            image_urls = self.generation_api.extract_media_urls(response)
+            image_urls = response.get('images') or self.generation_api.extract_media_urls(response)
+            if image_urls and isinstance(image_urls[0], dict):
+                image_urls = [img.get('url') for img in image_urls if img.get('url')]
             
             return {
                 "success": True,
@@ -919,7 +1113,9 @@ class MetaAI:
             )
             
             # Extract video URLs
-            video_urls = self.generation_api.extract_media_urls(response)
+            video_urls = response.get('videos') or self.generation_api.extract_media_urls(response)
+            if video_urls and isinstance(video_urls[0], dict):
+                video_urls = [vid.get('url') for vid in video_urls if vid.get('url')]
             
             return {
                 "success": True,
@@ -1017,33 +1213,17 @@ class MetaAI:
                 - error: str - Error message if upload failed
                 
         Example:
-            >>> ai = MetaAI(cookies={"datr": "...", "abra_sess": "..."})
+            >>> ai = MetaAI(cookies={"datr": "...", "abra_sess": "...", "ecto_1_sess": "..."})
             >>> result = ai.upload_image("path/to/image.jpg")
             >>> if result["success"]:
             >>>     print(f"Media ID: {result['media_id']}")
             >>>     # Use media_id in subsequent prompts for image analysis/generation
         """
-        # Extract required tokens from cookies
-        fb_dtsg = self.cookies.get("fb_dtsg", "")
-        jazoest = self.cookies.get("jazoest", "")
-        lsd = self.cookies.get("lsd", "")
-        
-        if not all([fb_dtsg, lsd]):
-            return {
-                "success": False,
-                "error": "Missing required tokens (fb_dtsg, lsd). Please ensure cookies are properly set."
-            }
-        
         # Initialize uploader with session and cookies
         uploader = ImageUploader(self.session, self.cookies)
         
         # Perform upload
-        result = uploader.upload_image(
-            file_path=file_path,
-            fb_dtsg=fb_dtsg,
-            jazoest=jazoest,
-            lsd=lsd
-        )
+        result = uploader.upload_image(file_path=file_path)
         
         # Ensure we always return a dict
         if result is None:

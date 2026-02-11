@@ -5,12 +5,15 @@ Advanced video generation and retrieval using Meta AI's GraphQL API
 
 import requests
 import json
+import logging
 import time
 import uuid
-from typing import Dict, List, Optional, Any
+import re
+from typing import Dict, List, Optional, Any, Iterator
 from requests_html import HTMLSession
 from metaai_api.utils import extract_value
 
+logger = logging.getLogger(__name__)
 
 class VideoGenerator:
     """
@@ -19,6 +22,11 @@ class VideoGenerator:
     """
 
     GRAPHQL_URL = 'https://www.meta.ai/api/graphql/'
+    
+    # GraphQL doc_ids from network analysis
+    VIDEO_CARD_DOC_ID = '666834feb70769370072c294c87ebd23'  # Video card initialization
+    VIDEO_GENERATE_DOC_ID = 'a3d873304cb1411ba7f056e47060ad1d'  # Video generation mutation
+    VIDEO_FETCH_DOC_ID = '10b7bd5aa8b7537e573e49d701a5b21b'  # Fetch video media results
 
     def __init__(
         self,
@@ -84,6 +92,118 @@ class VideoGenerator:
             "lsd": lsd,
             "fb_dtsg": fb_dtsg
         }
+
+    @staticmethod
+    def parse_sse_response(text: str) -> Iterator[Dict[str, Any]]:
+        """
+        Parse Server-Sent Events (SSE) format response.
+        Used for streaming responses from Meta AI video generation.
+        
+        Args:
+            text: Raw SSE response text with format: 'data: {...}\ndata: {...}\n...'
+        
+        Yields:
+            Parsed JSON dictionaries from each 'data:' line
+        """
+        for line in text.split('\n'):
+            line = line.strip()
+            if line.startswith('data:'):
+                json_str = line[5:].strip()
+                if json_str:
+                    try:
+                        yield json.loads(json_str)
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"Failed to parse SSE line: {e}")
+                        continue
+
+    @staticmethod
+    def extract_media_ids_from_response(response_data: Dict[str, Any]) -> List[str]:
+        """
+        Extract media IDs from video generation response.
+        Searches through nested response structure for mediaId fields.
+        
+        Args:
+            response_data: Response dictionary from Meta AI API
+        
+        Returns:
+            List of extracted media IDs
+        """
+        media_ids = []
+        
+        def search_dict(obj):
+            if isinstance(obj, dict):
+                if 'mediaId' in obj:
+                    media_id = obj['mediaId']
+                    if media_id and media_id not in media_ids:
+                        media_ids.append(media_id)
+                for value in obj.values():
+                    search_dict(value)
+            elif isinstance(obj, list):
+                for item in obj:
+                    search_dict(item)
+        
+        search_dict(response_data)
+        return media_ids
+
+    @staticmethod
+    def extract_video_urls_from_media(media_data: Dict[str, Any]) -> List[str]:
+        """
+        Extract video URLs from media response data.
+        
+        Args:
+            media_data: Media response dictionary
+        
+        Returns:
+            List of video URLs
+        """
+        urls = []
+        
+        def search_for_urls(obj):
+            if isinstance(obj, dict):
+                # Check for common video URL fields
+                for key in ['url', 'videoUrl', 'src']:
+                    if key in obj:
+                        url = obj[key]
+                        if url and isinstance(url, str) and ('http' in url or '.mp4' in url):
+                            if url not in urls:
+                                urls.append(url)
+                for value in obj.values():
+                    search_for_urls(value)
+            elif isinstance(obj, list):
+                for item in obj:
+                    search_for_urls(item)
+        
+        search_for_urls(media_data)
+        return urls
+
+    def retry_with_backoff(self, func, max_retries: int = 3, base_delay: float = 1.0):
+        """
+        Execute function with exponential backoff retry logic.
+        
+        Args:
+            func: Callable to execute
+            max_retries: Maximum number of retry attempts
+            base_delay: Initial delay in seconds before retry
+        
+        Returns:
+            Function result or None if all retries failed
+        """
+        last_exception = None
+        for attempt in range(max_retries):
+            try:
+                return func()
+            except Exception as e:
+                last_exception = e
+                if attempt < max_retries - 1:
+                    delay = base_delay * (2 ** attempt)  # Exponential backoff
+                    logger.warning(f"Attempt {attempt + 1}/{max_retries} failed. Retrying in {delay}s... Error: {e}")
+                    time.sleep(delay)
+                else:
+                    logger.error(f"All {max_retries} attempts failed. Last error: {e}")
+        
+        if last_exception:
+            raise last_exception
+        return None
 
     @classmethod
     def quick_generate(
