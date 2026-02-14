@@ -91,6 +91,12 @@ class MetaAI:
         self.external_conversation_id = None
         self.offline_threading_id = None
         
+        # Extract access token from page HTML (needed for image upload OAuth)
+        if self.cookies:
+            self.access_token = self.extract_access_token_from_page()
+            if not self.access_token:
+                logging.warning("⚠️ Could not extract accessToken from page. Image upload may fail.")
+        
         # Initialize Generation API
         self.generation_api = GenerationAPI(session=self.session, cookies=self.cookies)
 
@@ -155,6 +161,45 @@ class MetaAI:
         
         logging.info(f"Cookies loaded from .env: {list(cookies.keys())}")
         return cookies
+
+    def extract_access_token_from_page(self) -> Optional[str]:
+        """
+        Extract the accessToken from meta.ai page HTML.
+        This is the actual OAuth token needed for image upload, NOT the ecto_1_sess cookie.
+        
+        Returns:
+            str: The accessToken in format "ecto1:..." or None if extraction fails
+        """
+        try:
+            import re
+            
+            # Fetch meta.ai page with cookies
+            cookie_header = self.get_cookie_header()
+            headers = {
+                "cookie": cookie_header,
+                "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                              "(KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36"
+            }
+            
+            response = self.session.get("https://meta.ai", headers=headers)
+            response.raise_for_status()
+            
+            # Extract accessToken from page HTML using regex (handles escaped quotes)
+            # Pattern matches: \"accessToken\":\"ecto1:...\" (escaped in HTML)
+            pattern = r'accessToken\\":\\"(ecto1:[^"\\]+)'
+            match = re.search(pattern, response.text)
+            
+            if match:
+                access_token = match.group(1)
+                logging.info(f"✅ Extracted accessToken from page (length: {len(access_token)} chars)")
+                return access_token
+            else:
+                logging.warning("⚠️ accessToken not found in page HTML using regex pattern")
+                return None
+                
+        except Exception as e:
+            logging.error(f"❌ Failed to extract accessToken from page: {e}")
+            return None
 
     def get_cookies_dict(self) -> Dict[str, str]:
         """
@@ -1129,8 +1174,8 @@ class MetaAI:
             >>>     print(f"Media ID: {result['media_id']}")
             >>>     # Use media_id in subsequent prompts for image analysis/generation
         """
-        # Initialize uploader with session and cookies
-        uploader = ImageUploader(self.session, self.cookies)
+        # Initialize uploader with session, cookies, and access token
+        uploader = ImageUploader(self.session, self.cookies, self.access_token)
         
         # Perform upload
         result = uploader.upload_image(file_path=file_path)

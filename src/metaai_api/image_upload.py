@@ -18,16 +18,18 @@ class ImageUploader:
     
     UPLOAD_URL = "https://rupload.meta.ai/gen_ai_document_gen_ai_tenant/{upload_session_id}"
     
-    def __init__(self, session, cookies: Dict[str, str]):
+    def __init__(self, session, cookies: Dict[str, str], access_token: Optional[str] = None):
         """
         Initialize ImageUploader with a requests session.
         
         Args:
             session: Requests session with cookies and headers
             cookies: Dictionary of cookies including datr, abra_sess, etc.
+            access_token: OAuth access token extracted from meta.ai page (format: "ecto1:...")
         """
         self.session = session
         self.cookies = cookies
+        self.access_token = access_token
     
     def upload_image(
         self,
@@ -51,16 +53,19 @@ class ImageUploader:
                 - mime_type: str - MIME type of the image
                 - error: str - Error message if upload failed
         """
-        # Extract ecto_1_sess for OAuth authentication
-        ecto_1_sess = self.cookies.get('ecto_1_sess')
-        if not ecto_1_sess:
+        # Validate we have the access token
+        if not self.access_token:
             return {
                 "success": False,
-                "error": "Missing ecto_1_sess cookie required for OAuth authentication. Please ensure cookies are properly set."
+                "error": "Missing access token. Please ensure you're authenticated and the token was extracted from meta.ai page."
             }
         
-        # URL-decode the ecto_1_sess value (it may contain %3A for :, etc.)
-        ecto_1_sess_decoded = unquote(ecto_1_sess)
+        # Validate access token format
+        if not self.access_token.startswith('ecto1:'):
+            return {
+                "success": False,
+                "error": f"Invalid access token format. Expected 'ecto1:...' but got: {self.access_token[:20]}..."
+            }
         
         # Validate file exists
         if not os.path.exists(file_path):
@@ -101,11 +106,11 @@ class ImageUploader:
                 # Construct URL
                 url = self.UPLOAD_URL.format(upload_session_id=upload_session_id)
                 
-                # Build headers with OAuth authentication (matching working curl)
+                # Build headers with OAuth authentication (using access token from page)
                 headers = {
                     'accept': '*/*',
                     'accept-language': 'en-US,en;q=0.5',
-                    'authorization': f'OAuth ecto1:{ecto_1_sess_decoded}',  # OAuth header with decoded ecto_1_sess
+                    'authorization': f'OAuth {self.access_token}',  # OAuth header with access token from page
                     'desired_upload_handler': 'genai_document',
                     'ecto_auth_token': 'true',
                     'is_abra_user': 'true',
@@ -120,7 +125,7 @@ class ImageUploader:
                 
                 logger.info(f"Uploading {filename} ({file_size} bytes, {mime_type}) - attempt {attempt}/{max_retries}")
                 if attempt == 1:
-                    logger.info(f"Using OAuth with ecto_1_sess: {ecto_1_sess_decoded[:50]}...")
+                    logger.info(f"Using OAuth with access token: {self.access_token[:30]}...")
                 
                 # Create a fresh session without cookies to avoid conflicts with OAuth header
                 upload_session = requests.Session()
