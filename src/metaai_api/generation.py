@@ -38,9 +38,6 @@ class GenerationAPI:
         if cookies:
             self.session.cookies.update(cookies)
         
-        # Add timeout to the request method
-        self.session.timeout = self.DEFAULT_TIMEOUT
-        
         self.logger = logging.getLogger(__name__)
         
         # Initialize HTML scraper for extracting video URLs from pages
@@ -782,6 +779,7 @@ class GenerationAPI:
         
         self.logger.info(f"Fetching video URLs for {len(video_ids)} videos (max {max_attempts} attempts)")
         
+        videos = []  # Initialize to prevent unbound variable error
         for attempt in range(1, max_attempts + 1):
             try:
                 # Use the first video ID to fetch media (response includes all recent media)
@@ -892,6 +890,7 @@ class GenerationAPI:
 
         self.logger.info(f"Fetching image URLs for {len(image_ids)} images (max {max_attempts} attempts, {wait_seconds}s interval)")
 
+        images = []  # Initialize to prevent unbound variable error
         for attempt in range(1, max_attempts + 1):
             try:
                 data = self.fetch_media_by_id(image_ids[0], conversation_id=conversation_id)
