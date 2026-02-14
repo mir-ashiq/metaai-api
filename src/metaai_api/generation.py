@@ -282,8 +282,8 @@ class GenerationAPI:
             if image_ids:
                 self.logger.info(f"Fetching URLs for {len(image_ids)} images...")
 
-                max_attempts = kwargs.pop('max_attempts', 15)
-                wait_seconds = kwargs.pop('wait_seconds', 2)
+                max_attempts = kwargs.pop('max_attempts', 25)
+                wait_seconds = kwargs.pop('wait_seconds', 3)
 
                 images = self.fetch_image_urls_by_media_id(
                     image_ids=image_ids,
@@ -869,8 +869,8 @@ class GenerationAPI:
         self,
         image_ids: List[str],
         conversation_id: Optional[str] = None,
-        max_attempts: int = 15,
-        wait_seconds: int = 2
+        max_attempts: int = 25,
+        wait_seconds: int = 3
     ) -> List[Dict[str, Any]]:
         """
         Fetch image URLs using media IDs with retry logic.
@@ -881,8 +881,8 @@ class GenerationAPI:
         Args:
             image_ids: List of image IDs from generation
             conversation_id: Optional conversation ID for proper headers
-            max_attempts: Maximum polling attempts (default: 15 = ~30s)
-            wait_seconds: Seconds between attempts (default: 2)
+            max_attempts: Maximum polling attempts (default: 25 = ~75s)
+            wait_seconds: Seconds between attempts (default: 3)
 
         Returns:
             List of image dictionaries with URLs, IDs, thumbnails, etc.
@@ -890,7 +890,7 @@ class GenerationAPI:
         if not image_ids:
             return []
 
-        self.logger.info(f"Fetching image URLs for {len(image_ids)} images (max {max_attempts} attempts)")
+        self.logger.info(f"Fetching image URLs for {len(image_ids)} images (max {max_attempts} attempts, {wait_seconds}s interval)")
 
         for attempt in range(1, max_attempts + 1):
             try:
@@ -898,14 +898,14 @@ class GenerationAPI:
                 if not isinstance(data, dict):
                     self.logger.warning("Attempt %s/%s: media response is not a dict", attempt, max_attempts)
                     if attempt < max_attempts:
-                        delay = min(wait_seconds * (1 if attempt <= 3 else 1.5 if attempt <= 8 else 2), 5)
+                        delay = min(wait_seconds * (1 if attempt <= 5 else 1.3 if attempt <= 12 else 1.5), 6)
                         time.sleep(delay)
                     continue
 
                 if 'error' in data:
                     self.logger.warning(f"Attempt {attempt}/{max_attempts}: {data['error']}")
                     if attempt < max_attempts:
-                        delay = min(wait_seconds * (1 if attempt <= 3 else 1.5 if attempt <= 8 else 2), 5)
+                        delay = min(wait_seconds * (1 if attempt <= 5 else 1.3 if attempt <= 12 else 1.5), 6)
                         time.sleep(delay)
                     continue
 
@@ -915,7 +915,7 @@ class GenerationAPI:
                 if not isinstance(data_root, dict):
                     self.logger.warning("Attempt %s/%s: media response missing data field", attempt, max_attempts)
                     if attempt < max_attempts:
-                        delay = min(wait_seconds * (1 if attempt <= 3 else 1.5 if attempt <= 8 else 2), 5)
+                        delay = min(wait_seconds * (1 if attempt <= 5 else 1.3 if attempt <= 12 else 1.5), 6)
                         time.sleep(delay)
                     continue
 
@@ -1001,10 +1001,14 @@ class GenerationAPI:
             except Exception as e:
                 self.logger.warning(f"Attempt {attempt}/{max_attempts} failed: {e}")
                 if attempt < max_attempts:
-                    delay = min(wait_seconds * (1 if attempt <= 3 else 1.5 if attempt <= 8 else 2), 5)
+                    delay = min(wait_seconds * (1 if attempt <= 5 else 1.3 if attempt <= 12 else 1.5), 6)
                     time.sleep(delay)
 
-        self.logger.warning(f"Image URLs not fully available after {max_attempts} attempts")
+        images_found = len(images) if 'images' in locals() else 0
+        if images_found > 0:
+            self.logger.warning(f"Only {images_found}/{len(image_ids)} image URLs available after {max_attempts} attempts")
+        else:
+            self.logger.warning(f"No image URLs available after {max_attempts} attempts (~{max_attempts * wait_seconds}s). Images may still be processing.")
         return images if 'images' in locals() else []
     
     def fetch_video_urls(
@@ -1183,39 +1187,63 @@ class GenerationAPI:
             
             # Extract URLs from messages
             for edge in messages:
-                node = edge.get('node', {})
-                content = node.get('content', {})
+                if not isinstance(edge, dict):
+                    continue
+                    
+                node = edge.get('node')
+                if not isinstance(node, dict):
+                    continue
+                    
+                content = node.get('content')
+                if not isinstance(content, dict):
+                    continue
                 
                 # Try image imagine
-                imagine_media = content.get('imagine_media') or {}
-                images = imagine_media.get('images', {}).get('nodes', [])
-                for img in images:
-                    url = img.get('uri') or img.get('url')
-                    if url:
-                        urls.append(url)
+                imagine_media = content.get('imagine_media')
+                if isinstance(imagine_media, dict):
+                    images_data = imagine_media.get('images')
+                    if isinstance(images_data, dict):
+                        images = images_data.get('nodes', [])
+                        if isinstance(images, list):
+                            for img in images:
+                                if isinstance(img, dict):
+                                    url = img.get('uri') or img.get('url')
+                                    if url:
+                                        urls.append(url)
                 
                 # Try video imagine
-                imagine_video = content.get('imagine_video') or {}
-                
-                # Handle both 'videos' (plural) and 'video' (singular)
-                videos = imagine_video.get('videos', {}).get('nodes', [])
-                if not videos:
-                    video_single = imagine_video.get('video')
-                    if video_single:
-                        videos = [video_single]
-                
-                for video in videos:
-                    uri = video.get('video_url') or video.get('uri')
-                    if uri:
-                        urls.append(uri)
+                imagine_video = content.get('imagine_video')
+                if isinstance(imagine_video, dict):
+                    # Handle both 'videos' (plural) and 'video' (singular)
+                    videos = []
+                    videos_data = imagine_video.get('videos')
+                    if isinstance(videos_data, dict):
+                        videos = videos_data.get('nodes', [])
                     
-                    # Check for delivery response
-                    delivery = video.get('videoDeliveryResponseResult') or {}
-                    prog = delivery.get('progressive_urls', [])
-                    for p in prog:
-                        pu = p.get('progressive_url')
-                        if pu:
-                            urls.append(pu)
+                    if not videos:
+                        video_single = imagine_video.get('video')
+                        if isinstance(video_single, dict):
+                            videos = [video_single]
+                    
+                    if isinstance(videos, list):
+                        for video in videos:
+                            if not isinstance(video, dict):
+                                continue
+                                
+                            uri = video.get('video_url') or video.get('uri')
+                            if uri:
+                                urls.append(uri)
+                            
+                            # Check for delivery response
+                            delivery = video.get('videoDeliveryResponseResult')
+                            if isinstance(delivery, dict):
+                                prog = delivery.get('progressive_urls', [])
+                                if isinstance(prog, list):
+                                    for p in prog:
+                                        if isinstance(p, dict):
+                                            pu = p.get('progressive_url')
+                                            if pu:
+                                                urls.append(pu)
         except Exception as e:
             self.logger.error(f"Error extracting media URLs: {e}")
         
