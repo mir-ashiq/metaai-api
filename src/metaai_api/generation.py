@@ -21,7 +21,8 @@ class GenerationAPI:
     
     ENDPOINT = "https://www.meta.ai/api/graphql"
     DOC_ID = "83c79c30d655e0ae6f20af0e129101e2"  # Updated from curl.json - TEXT_TO_IMAGE and TEXT_TO_VIDEO
-    IMAGE_DOC_ID = "904075722675ba2c1a7b333d4c525a1b"  # Alternate image doc_id from network captures
+    IMAGE_DOC_ID = "9d1cbdc2209964994658a3eff662a0eb"  # Working fast doc_id from fast-image.py (Feb 2026)
+    IMAGE_DOC_ID_ALT = "904075722675ba2c1a7b333d4c525a1b"  # Alternate image doc_id from network captures (fallback)
     FETCH_CONVERSATION_DOC_ID = "e7f802582dbfed8e181b012e010993eb"  # Fetch conversation with populated video URLs
     FETCH_MEDIA_DOC_ID = "10b7bd5aa8b7537e573e49d701a5b21b"  # Fetch video/image by media ID (returns mediaLibraryFeed with all media)
     DEFAULT_TIMEOUT = 60  # seconds - increased for image generation which can take time
@@ -253,9 +254,9 @@ class GenerationAPI:
         if self._check_response_for_auth_error(response):
             raise Exception("Authentication failed - please refresh cookies using auto_refresh_cookies.py")
 
-        if response.status_code == 400 and payload["doc_id"] != self.DOC_ID:
+        if response.status_code == 400 and payload["doc_id"] == self.IMAGE_DOC_ID:
             self.logger.warning("Image gen returned 400; retrying with alternate image doc_id")
-            payload["doc_id"] = self.DOC_ID
+            payload["doc_id"] = self.IMAGE_DOC_ID_ALT
             response = self.session.post(
                 self.ENDPOINT,
                 json=payload,
@@ -272,12 +273,17 @@ class GenerationAPI:
         response.raise_for_status()
         result = self._parse_response(response)
 
+        # Check if we already have image URLs from the SSE stream
+        has_urls = result.get('images') and len(result.get('images', [])) > 0
+        
         if fetch_urls and result.get('image_objects'):
             image_ids = [img.get('id') for img in result['image_objects'] if img.get('id')]
             conversation_id = result.get('conversation_id')
 
-            if image_ids:
-                self.logger.info(f"Fetching URLs for {len(image_ids)} images...")
+            if has_urls:
+                self.logger.info(f"✅ {len(result['images'])} image URLs already available from SSE stream - skipping polling")
+            elif image_ids:
+                self.logger.info(f"⏳ No URLs in SSE stream - fetching URLs for {len(image_ids)} images via polling...")
 
                 max_attempts = kwargs.pop('max_attempts', 25)
                 wait_seconds = kwargs.pop('wait_seconds', 3)
@@ -519,6 +525,7 @@ class GenerationAPI:
         try:
             lines = response.text.split('\n')
             current_event = None
+            event_count = 0
             
             for line in lines:
                 line = line.strip()
@@ -528,6 +535,7 @@ class GenerationAPI:
                 
                 if line.startswith('event:'):
                     current_event = line.split(':', 1)[1].strip()
+                    event_count += 1
                     continue
                 
                 if line.startswith('data:'):
@@ -545,12 +553,18 @@ class GenerationAPI:
                             if msg.get('conversationId') and not result['conversation_id']:
                                 result['conversation_id'] = msg['conversationId']
                             
-                            # Extract images
+                            # Extract images (now with better logging)
                             if 'images' in msg and msg['images']:
                                 for img in msg['images']:
                                     img_url = img.get('url')
-                                    if img_url and img_url not in result['images']:
-                                        result['images'].append(img_url)
+                                    img_id = img.get('id', 'unknown')
+                                    
+                                    if img_url:
+                                        if img_url not in result['images']:
+                                            result['images'].append(img_url)
+                                            self.logger.debug(f"Found image URL in SSE event {event_count} for ID {img_id}: {img_url[:80]}...")
+                                    else:
+                                        self.logger.debug(f"Image in SSE event {event_count} has null URL (ID: {img_id}) - still processing")
 
                                     if img not in result['image_objects']:
                                         result['image_objects'].append(img)
@@ -577,7 +591,7 @@ class GenerationAPI:
                         self.logger.debug(f"Could not parse SSE data line: {data_str[:100]}")
                         continue
             
-            self.logger.info(f"SSE parse complete - State: {result['streaming_state']}, Images: {len(result['images'])}, Videos: {len(result['videos'])}, Conv ID: {result['conversation_id']}")
+            self.logger.info(f"SSE parse complete - Events: {event_count}, State: {result['streaming_state']}, Images: {len(result['images'])} URLs found, Image Objects: {len(result['image_objects'])}, Videos: {len(result['videos'])}, Conv ID: {result['conversation_id']}")
             return result
             
         except Exception as e:
