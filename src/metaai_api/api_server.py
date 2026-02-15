@@ -198,6 +198,9 @@ class JobStore:
 
 jobs = JobStore()
 
+# Global MetaAI instance (initialized once at startup)
+_meta_ai_instance: Optional[MetaAI] = None
+
 
 async def get_cookies() -> Dict[str, str]:
     await cache.refresh_if_needed()
@@ -210,7 +213,24 @@ async def _startup() -> None:
     # Skip initial refresh to avoid unnecessary token fetching
     # Tokens will be refreshed on-demand if needed
     # await cache.refresh_if_needed(force=True)
-    global refresh_task
+    
+    # Initialize global MetaAI instance to prevent repeated token extraction
+    global _meta_ai_instance, refresh_task
+    logger.info("Initializing global MetaAI instance...")
+    
+    try:
+        _meta_ai_instance = MetaAI(proxy=_get_proxies())
+        
+        # Log token status (handle case where extraction failed)
+        if _meta_ai_instance.access_token:
+            logger.info(f"MetaAI instance initialized with access token: {_meta_ai_instance.access_token[:50]}...")
+        else:
+            logger.warning("MetaAI instance initialized but access token extraction failed (may be rate-limited). Will retry in background.")
+    except Exception as init_exc:  # noqa: BLE001
+        logger.error(f"Failed to initialize MetaAI instance: {init_exc}")
+        logger.warning("Server will start without MetaAI instance. API requests will fail until initialization succeeds.")
+        _meta_ai_instance = None
+    
     refresh_task = asyncio.create_task(_refresh_loop())
 
 
@@ -227,8 +247,10 @@ async def _shutdown() -> None:
 async def chat(body: ChatRequest) -> Dict[str, Any]:
     if body.stream:
         raise HTTPException(status_code=400, detail="Streaming not supported via HTTP JSON; set stream=false")
-    # Create MetaAI - chat functionality is currently unavailable
-    ai = MetaAI(proxy=_get_proxies())
+    # Use global MetaAI instance
+    if _meta_ai_instance is None:
+        raise HTTPException(status_code=503, detail="MetaAI instance not initialized yet. Server may be rate-limited. Please try again in a moment.")
+    ai = _meta_ai_instance
     try:
         return cast(Dict[str, Any], await run_in_threadpool(
             ai.prompt,
@@ -245,8 +267,10 @@ async def chat(body: ChatRequest) -> Dict[str, Any]:
 
 @app.post("/image")
 async def image(body: ImageRequest) -> Dict[str, Any]:
-    # Create MetaAI - image generation uses cookie-based auth
-    ai = MetaAI(proxy=_get_proxies())
+    # Use global MetaAI instance
+    if _meta_ai_instance is None:
+        raise HTTPException(status_code=503, detail="MetaAI instance not initialized yet. Server may be rate-limited. Please try again in a moment.")
+    ai = _meta_ai_instance
     try:
         # Use the new generation API that doesn't require fb_dtsg/lsd tokens
         result = await run_in_threadpool(
@@ -265,8 +289,10 @@ async def image(body: ImageRequest) -> Dict[str, Any]:
 
 @app.post("/video")
 async def video(body: VideoRequest) -> Dict[str, Any]:
-    # Create MetaAI - video generation uses cookie-based auth
-    ai = MetaAI(proxy=_get_proxies())
+    # Use global MetaAI instance
+    if _meta_ai_instance is None:
+        raise HTTPException(status_code=503, detail="MetaAI instance not initialized yet. Server may be rate-limited. Please try again in a moment.")
+    ai = _meta_ai_instance
     try:
         # Use the new generation API that doesn't require fb_dtsg/lsd tokens
         result = await run_in_threadpool(
@@ -315,8 +341,10 @@ async def upload_image(
         with open(temp_path, 'wb') as f:
             f.write(content)
         
-        # Initialize MetaAI - upload uses cookie-based auth
-        ai = MetaAI(proxy=_get_proxies())
+        # Use global MetaAI instance
+        if _meta_ai_instance is None:
+            raise HTTPException(status_code=503, detail="MetaAI instance not initialized yet. Server may be rate-limited. Please try again in a moment.")
+        ai = _meta_ai_instance
         
         result = await run_in_threadpool(ai.upload_image, temp_path)
         
@@ -343,8 +371,11 @@ async def health() -> Dict[str, str]:
 async def _run_video_job(job_id: str, body: VideoRequest) -> None:
     logger.info(f"[JOB {job_id}] Starting video generation job")
     await jobs.set_running(job_id)
-    # Create MetaAI - video generation uses cookie-based auth
-    ai = MetaAI(proxy=_get_proxies())
+    # Use global MetaAI instance
+    if _meta_ai_instance is None:
+        await jobs.set_error(job_id, "MetaAI instance not initialized yet. Server may be rate-limited.")
+        return
+    ai = _meta_ai_instance
     try:
         logger.info(f"[JOB {job_id}] Calling generate_video_new with prompt: {body.prompt[:100]}...")
         result = await run_in_threadpool(
@@ -382,9 +413,63 @@ async def _run_video_job(job_id: str, body: VideoRequest) -> None:
 
 
 async def _refresh_loop() -> None:
+    # If initial token extraction failed, retry after a short delay
+    global _meta_ai_instance
+    
+    # If MetaAI instance creation completely failed, retry after delay
+    if _meta_ai_instance is None:
+        logger.info("MetaAI instance not initialized. Waiting 30 seconds before retry...")
+        await asyncio.sleep(30)
+        try:
+            logger.info("Retrying MetaAI instance initialization...")
+            _meta_ai_instance = MetaAI(proxy=_get_proxies())
+            if _meta_ai_instance and _meta_ai_instance.access_token:
+                logger.info(f"MetaAI instance successfully initialized: {_meta_ai_instance.access_token[:50]}...")
+            else:
+                logger.warning("MetaAI instance created but token extraction failed. Will retry in next cycle.")
+        except Exception as init_exc:  # noqa: BLE001
+            logger.error(f"Failed to initialize MetaAI instance on retry: {init_exc}")
+            logger.info("Will retry in next refresh cycle.")
+    
+    # If token extraction failed but instance exists, retry immediately
+    elif not _meta_ai_instance.access_token:
+        logger.info("Initial token extraction failed. Waiting 30 seconds before retry...")
+        await asyncio.sleep(30)
+        try:
+            logger.info("Retrying access token extraction...")
+            _meta_ai_instance.access_token = _meta_ai_instance.extract_access_token_from_page()
+            if _meta_ai_instance.access_token:
+                logger.info(f"Access token successfully extracted: {_meta_ai_instance.access_token[:50]}...")
+            else:
+                logger.warning("Token extraction retry failed. Will retry in next refresh cycle.")
+        except Exception as token_exc:  # noqa: BLE001
+            logger.error(f"Failed to extract access token on retry: {token_exc}")
+    
     while True:
         try:
             await cache.refresh_if_needed(force=True)
+            
+            # Refresh access token for the global MetaAI instance
+            if _meta_ai_instance:
+                logger.info("Refreshing access token for global MetaAI instance...")
+                try:
+                    new_token = _meta_ai_instance.extract_access_token_from_page()
+                    if new_token:
+                        _meta_ai_instance.access_token = new_token
+                        logger.info(f"Access token refreshed: {_meta_ai_instance.access_token[:50]}...")
+                    else:
+                        logger.warning("Token refresh returned None. Keeping existing token.")
+                except Exception as token_exc:  # noqa: BLE001
+                    logger.error(f"Failed to refresh access token: {token_exc}")
+            else:
+                # Try to recreate MetaAI instance if it's still None
+                logger.info("MetaAI instance is None. Attempting to recreate...")
+                try:
+                    _meta_ai_instance = MetaAI(proxy=_get_proxies())
+                    if _meta_ai_instance and _meta_ai_instance.access_token:
+                        logger.info(f"MetaAI instance recreated successfully: {_meta_ai_instance.access_token[:50]}...")
+                except Exception as recreate_exc:  # noqa: BLE001
+                    logger.error(f"Failed to recreate MetaAI instance: {recreate_exc}")
         except Exception as exc:  # noqa: BLE001
             logger.warning("Background refresh failed: %s", exc)
         await asyncio.sleep(REFRESH_SECONDS)

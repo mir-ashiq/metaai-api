@@ -91,8 +91,14 @@ class MetaAI:
         self.external_conversation_id = None
         self.offline_threading_id = None
         
-        # Extract access token from page HTML (needed for image upload OAuth)
-        if self.cookies:
+        # Extract access token (needed for image upload OAuth)
+        # First try to load from environment variable (to avoid rate limiting)
+        self.access_token = os.getenv('META_AI_ACCESS_TOKEN')
+        
+        if self.access_token:
+            logging.info(f"✅ Loaded access token from META_AI_ACCESS_TOKEN environment variable: {self.access_token[:50]}...")
+        elif self.cookies:
+            # If not in env, extract from page HTML
             self.access_token = self.extract_access_token_from_page()
             if not self.access_token:
                 logging.warning("⚠️ Could not extract accessToken from page. Image upload may fail.")
@@ -110,6 +116,8 @@ class MetaAI:
         - META_AI_DATR: Required - Device identifier cookie
         - META_AI_ABRA_SESS: Required - Session cookie
         - META_AI_ECTO_1_SESS: Critical - Session state token (MOST IMPORTANT)
+        - META_AI_ACCESS_TOKEN: Optional - OAuth access token for image upload (ecto1:... format)
+                               If not provided, will be extracted from meta.ai page (may hit rate limits)
         - META_AI_DPR: Optional - Device pixel ratio
         - META_AI_WD: Optional - Window dimensions
         - META_AI_JS_DATR: Optional - JavaScript datr
