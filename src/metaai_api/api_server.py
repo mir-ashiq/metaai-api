@@ -10,6 +10,8 @@ from typing import Any, Dict, Optional, cast
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, UploadFile, File, Form, Request
 from fastapi.concurrency import run_in_threadpool
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 import time as time_module
 
@@ -26,6 +28,17 @@ if env_path.exists():
 # Refresh interval (seconds) for keeping lsd/fb_dtsg/cookies fresh
 DEFAULT_REFRESH_SECONDS = 3600
 REFRESH_SECONDS = int(os.getenv("META_AI_REFRESH_INTERVAL_SECONDS", DEFAULT_REFRESH_SECONDS))
+
+# Request timeout (seconds) - prevents infinite hangs on long-running operations
+DEFAULT_REQUEST_TIMEOUT = 120
+REQUEST_TIMEOUT = int(os.getenv("META_AI_REQUEST_TIMEOUT_SECONDS", DEFAULT_REQUEST_TIMEOUT))
+
+# CORS configuration
+DEFAULT_ALLOWED_ORIGINS = ["*"]
+CORS_ALLOWED_ORIGINS_ENV = os.getenv("META_AI_CORS_ALLOWED_ORIGINS", "")
+CORS_ALLOWED_ORIGINS = [
+    origin.strip() for origin in CORS_ALLOWED_ORIGINS_ENV.split(",")
+] if CORS_ALLOWED_ORIGINS_ENV else DEFAULT_ALLOWED_ORIGINS
 
 
 class TokenCache:
@@ -83,6 +96,28 @@ cache = TokenCache()
 refresh_task: Optional[asyncio.Task] = None
 app = FastAPI(title="Meta AI API Service", version="0.1.0")
 
+# Add CORS middleware to allow cross-origin requests
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Exception handler for unhandled exceptions - returns JSON
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    """Convert any unhandled exception to JSON response."""
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "success": False,
+            "error": "Internal server error",
+            "detail": str(exc) if logger.level == logging.DEBUG else "An unexpected error occurred"
+        }
+    )
 
 # Middleware to log all requests
 @app.middleware("http")
@@ -267,44 +302,100 @@ async def chat(body: ChatRequest) -> Dict[str, Any]:
 
 @app.post("/image")
 async def image(body: ImageRequest) -> Dict[str, Any]:
-    # Use global MetaAI instance
+    """Generate images from text prompts."""
     if _meta_ai_instance is None:
-        raise HTTPException(status_code=503, detail="MetaAI instance not initialized yet. Server may be rate-limited. Please try again in a moment.")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "success": False,
+                "error": "MetaAI instance not initialized",
+                "detail": "Server is initializing or rate-limited. Please try again in a moment."
+            }
+        )
     ai = _meta_ai_instance
     try:
-        # Use the new generation API that doesn't require fb_dtsg/lsd tokens
-        result = await run_in_threadpool(
-            ai.generate_image_new,
-            prompt=body.prompt,
-            orientation=body.orientation or "VERTICAL",
-            num_images=1,
-            media_ids=body.media_ids,
-            attachment_metadata=body.attachment_metadata
+        # Use the new generation API with timeout protection
+        result = await asyncio.wait_for(
+            run_in_threadpool(
+                ai.generate_image_new,
+                prompt=body.prompt,
+                orientation=body.orientation or "VERTICAL",
+                num_images=1,
+                media_ids=body.media_ids,
+                attachment_metadata=body.attachment_metadata
+            ),
+            timeout=REQUEST_TIMEOUT
         )
         return cast(Dict[str, Any], result)
+    except asyncio.TimeoutError:
+        logger.warning(f"Image generation timeout after {REQUEST_TIMEOUT}s for prompt: {body.prompt[:50]}...")
+        return JSONResponse(
+            status_code=504,
+            content={
+                "success": False,
+                "error": "Image generation timeout",
+                "detail": f"Request exceeded {REQUEST_TIMEOUT} second timeout. The generation may still be processing."
+            }
+        )
     except Exception as exc:  # noqa: BLE001
+        logger.error(f"Image generation error: {exc}")
         await cache.refresh_after_error()
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "error": str(exc),
+                "detail": "Image generation failed"
+            }
+        )
 
 
 @app.post("/video")
 async def video(body: VideoRequest) -> Dict[str, Any]:
-    # Use global MetaAI instance
+    """Generate videos from text prompts (synchronous)."""
     if _meta_ai_instance is None:
-        raise HTTPException(status_code=503, detail="MetaAI instance not initialized yet. Server may be rate-limited. Please try again in a moment.")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "success": False,
+                "error": "MetaAI instance not initialized",
+                "detail": "Server is initializing or rate-limited. Please try again in a moment."
+            }
+        )
     ai = _meta_ai_instance
     try:
-        # Use the new generation API that doesn't require fb_dtsg/lsd tokens
-        result = await run_in_threadpool(
-            ai.generate_video_new,
-            prompt=body.prompt,
-            media_ids=body.media_ids,
-            attachment_metadata=body.attachment_metadata
+        # Use the new generation API with timeout protection
+        result = await asyncio.wait_for(
+            run_in_threadpool(
+                ai.generate_video_new,
+                prompt=body.prompt,
+                media_ids=body.media_ids,
+                attachment_metadata=body.attachment_metadata
+            ),
+            timeout=REQUEST_TIMEOUT
         )
         return cast(Dict[str, Any], result)
+    except asyncio.TimeoutError:
+        logger.warning(f"Video generation timeout after {REQUEST_TIMEOUT}s for prompt: {body.prompt[:50]}...")
+        return JSONResponse(
+            status_code=504,
+            content={
+                "success": False,
+                "error": "Video generation timeout",
+                "detail": f"Request exceeded {REQUEST_TIMEOUT} second timeout. Use /video/async for longer operations."
+            }
+        )
     except Exception as exc:  # noqa: BLE001
+        logger.error(f"Video generation error: {exc}")
         await cache.refresh_after_error()
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "error": str(exc),
+                "detail": "Video generation failed"
+            }
+        )
 
 
 @app.post("/video/async")
@@ -343,16 +434,45 @@ async def upload_image(
         
         # Use global MetaAI instance
         if _meta_ai_instance is None:
-            raise HTTPException(status_code=503, detail="MetaAI instance not initialized yet. Server may be rate-limited. Please try again in a moment.")
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "success": False,
+                    "error": "MetaAI instance not initialized",
+                    "detail": "Server is initializing or rate-limited. Please try again in a moment."
+                }
+            )
         ai = _meta_ai_instance
         
-        result = await run_in_threadpool(ai.upload_image, temp_path)
+        # Upload with timeout protection
+        result = await asyncio.wait_for(
+            run_in_threadpool(ai.upload_image, temp_path),
+            timeout=60
+        )
         
         return cast(Dict[str, Any], result)
     
+    except asyncio.TimeoutError:
+        logger.warning(f"Image upload timeout after 60s for file: {file.filename}")
+        return JSONResponse(
+            status_code=504,
+            content={
+                "success": False,
+                "error": "Upload timeout",
+                "detail": "Image upload exceeded 60 second timeout. Please try again."
+            }
+        )
     except Exception as exc:  # noqa: BLE001
+        logger.error(f"Image upload error: {exc}")
         await cache.refresh_after_error()
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "error": str(exc),
+                "detail": "Image upload failed"
+            }
+        )
     
     finally:
         # Clean up temporary file
