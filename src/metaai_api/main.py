@@ -174,12 +174,14 @@ class MetaAI:
         """
         Extract the accessToken from meta.ai page HTML.
         This is the actual OAuth token needed for image upload, NOT the ecto_1_sess cookie.
+        Handles challenge pages automatically.
         
         Returns:
             str: The accessToken in format "ecto1:..." or None if extraction fails
         """
         try:
             import re
+            from metaai_api.utils import detect_challenge_page, handle_meta_ai_challenge
             
             # Fetch meta.ai page with cookies
             cookie_header = self.get_cookie_header()
@@ -190,6 +192,28 @@ class MetaAI:
             }
             
             response = self.session.get("https://meta.ai", headers=headers)
+            
+            # Check for challenge page BEFORE calling raise_for_status
+            challenge_url = detect_challenge_page(response.text)
+            if challenge_url:
+                logging.warning("⚠️ Meta AI returned a challenge page during token extraction. Attempting to handle it...")
+                cookies_dict = self.get_cookies_dict()
+                if handle_meta_ai_challenge(self.session, challenge_url=challenge_url, cookies_dict=cookies_dict):
+                    # Update cookies with rd_challenge if it was extracted
+                    if "rd_challenge" in cookies_dict:
+                        self.cookies["rd_challenge"] = cookies_dict["rd_challenge"]
+                        logging.info(f"[TOKEN] Saved rd_challenge: {cookies_dict['rd_challenge'][:50]}...")
+                    
+                    # Retry after handling challenge
+                    logging.info("🔄 Re-fetching page after challenge resolution...")
+                    cookie_header = self.get_cookie_header()
+                    headers["cookie"] = cookie_header
+                    response = self.session.get("https://meta.ai", headers=headers)
+                else:
+                    logging.error("❌ Failed to handle challenge page in extract_access_token_from_page.")
+                    return None
+            
+            # Now check status after challenge handling
             response.raise_for_status()
             
             # Extract accessToken from page HTML using regex (handles escaped quotes)
@@ -890,11 +914,13 @@ class MetaAI:
             headers=headers,
         )
         
+        # Initialize cookies_dict before challenge check
+        cookies_dict: Dict[str, str] = {}
+        
         # Check for challenge page
         challenge_url = detect_challenge_page(response.text)
         if challenge_url:
             logging.warning("⚠️  Meta AI returned a challenge page during get_cookies. Attempting to handle it...")
-            cookies_dict = {}
             if fb_session:
                 cookies_dict = {"abra_sess": fb_session["abra_sess"]}
             if handle_meta_ai_challenge(session, challenge_url=challenge_url, cookies_dict=cookies_dict):
@@ -1024,10 +1050,10 @@ class MetaAI:
                 **kwargs
             )
             
-            # Extract image URLs
+            # Extract image URLs with type safety
             image_urls = response.get('images') or self.generation_api.extract_media_urls(response)
-            if image_urls and isinstance(image_urls[0], dict):
-                image_urls = [img.get('url') for img in image_urls if img.get('url')]
+            if image_urls and isinstance(image_urls, list) and len(image_urls) > 0 and isinstance(image_urls[0], dict):
+                image_urls = [img.get('url') for img in image_urls if isinstance(img, dict) and img.get('url')]
             
             return {
                 "success": True,
@@ -1073,10 +1099,10 @@ class MetaAI:
                 **kwargs
             )
             
-            # Extract video URLs
+            # Extract video URLs with type safety
             video_urls = response.get('videos') or self.generation_api.extract_media_urls(response)
-            if video_urls and isinstance(video_urls[0], dict):
-                video_urls = [vid.get('url') for vid in video_urls if vid.get('url')]
+            if video_urls and isinstance(video_urls, list) and len(video_urls) > 0 and isinstance(video_urls[0], dict):
+                video_urls = [vid.get('url') for vid in video_urls if isinstance(vid, dict) and vid.get('url')]
             
             return {
                 "success": True,
