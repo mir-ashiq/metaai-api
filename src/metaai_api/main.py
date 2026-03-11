@@ -513,7 +513,6 @@ class MetaAI:
                 "artifactRewriteOptions": None,
                 "imagineOperationRequest": None,
                 "imagineClientOptions": {"orientation": str(orientation).upper() if orientation else "VERTICAL"},
-                "spaceId": None,
                 "sparkSnapshotId": None,
                 "topicPageId": None,
                 "includeSpace": False,
@@ -1042,6 +1041,22 @@ class MetaAI:
             >>>     for url in result.get('image_urls', []):
             >>>         print(f"Image URL: {url}")
         """
+        # Validate inputs
+        if not prompt or not prompt.strip():
+            return {
+                "success": False,
+                "error": "Prompt cannot be empty",
+                "prompt": prompt
+            }
+        
+        valid_orientations = ["VERTICAL", "HORIZONTAL", "LANDSCAPE", "SQUARE"]
+        if orientation.upper() not in valid_orientations:
+            return {
+                "success": False,
+                "error": f"Invalid orientation '{orientation}'. Must be one of: {', '.join(valid_orientations)}",
+                "prompt": prompt
+            }
+        
         try:
             response = self.generation_api.generate_image(
                 prompt=prompt,
@@ -1055,13 +1070,17 @@ class MetaAI:
             if image_urls and isinstance(image_urls, list) and len(image_urls) > 0 and isinstance(image_urls[0], dict):
                 image_urls = [img.get('url') for img in image_urls if isinstance(img, dict) and img.get('url')]
             
+            # Check if we actually got URLs
+            has_urls = image_urls and len(image_urls) > 0
+            
             return {
-                "success": True,
+                "success": has_urls,
                 "prompt": prompt,
                 "orientation": orientation,
                 "num_images": num_images,
-                "image_urls": image_urls,
-                "response": response
+                "image_urls": image_urls if has_urls else [],
+                "response": response,
+                "error": None if has_urls else "No image URLs returned - images may still be processing"
             }
         except Exception as e:
             logging.error(f"Error generating images: {e}")
@@ -1074,40 +1093,87 @@ class MetaAI:
     def generate_video_new(
         self,
         prompt: str,
+        auto_poll: bool = False,
+        max_poll_attempts: int = 15,
+        poll_wait_seconds: int = 3,
         **kwargs
     ) -> Dict[str, Any]:
         """
         Generate video using new API (based on captured network requests).
         
+        NOTE: Video generation is asynchronous. Videos are viewable at:
+        https://www.meta.ai/create/{media_id}
+        
         Args:
             prompt: Text description of the video to generate
+            auto_poll: If True, automatically poll for video IDs (default: False)
+            max_poll_attempts: Maximum polling attempts when auto_poll=True (default: 15)
+            poll_wait_seconds: Seconds between polls (default: 3)
             **kwargs: Additional parameters
             
         Returns:
-            Dictionary with response data and extracted video URLs
+            Dictionary with:
+            - success: True if request submitted successfully
+            - conversation_id: ID for tracking the video generation
+            - video_urls: List of Meta AI URLs (https://www.meta.ai/create/{id})
+            - processing: True if video is still being generated/polled
             
         Example:
             >>> ai = MetaAI(cookies={"datr": "...", "abra_sess": "..."})
+            >>> # Quick submission (check Meta AI manually)
             >>> result = ai.generate_video_new("Astronaut in space")
-            >>> if result.get('success'):
-            >>>     for url in result.get('video_urls', []):
-            >>>         print(f"Video URL: {url}")
+            >>> print(f"Track at: https://www.meta.ai/prompt/{result['conversation_id']}")
+            >>> 
+            >>> # Auto-poll for URLs (waits ~45s)
+            >>> result = ai.generate_video_new("Astronaut in space", auto_poll=True)
+            >>> print(f"Video URL: {result['video_urls'][0]}")
         """
+        # Validate inputs
+        if not prompt or not prompt.strip():
+            return {
+                "success": False,
+                "error": "Prompt cannot be empty",
+                "prompt": prompt
+            }
+        
         try:
             response = self.generation_api.generate_video(
                 prompt=prompt,
+                fetch_urls=False,  # Don't use old fetch method
                 **kwargs
             )
             
-            # Extract video URLs with type safety
-            video_urls = response.get('videos') or self.generation_api.extract_media_urls(response)
-            if video_urls and isinstance(video_urls, list) and len(video_urls) > 0 and isinstance(video_urls[0], dict):
-                video_urls = [vid.get('url') for vid in video_urls if isinstance(vid, dict) and vid.get('url')]
+            # Extract conversation ID
+            conversation_id = response.get('conversation_id')
+            
+            # Extract video IDs and construct Meta AI URLs
+            video_objects = response.get('video_objects', [])
+            video_urls = []
+            
+            for vid_obj in video_objects:
+                vid_id = vid_obj.get('id')
+                if vid_id:
+                    # Construct Meta AI create page URL
+                    meta_ai_url = f"https://www.meta.ai/create/{vid_id}"
+                    video_urls.append(meta_ai_url)
+            
+            # Auto-poll for video IDs if enabled
+            if auto_poll and conversation_id and not video_urls:
+                logging.info(f"Auto-polling for video IDs (max {max_poll_attempts} attempts, {poll_wait_seconds}s intervals)...")
+                video_urls = self.generation_api.poll_for_video_ids(
+                    conversation_id=conversation_id,
+                    max_attempts=max_poll_attempts,
+                    wait_seconds=poll_wait_seconds
+                )
+            
+            has_urls = len(video_urls) > 0
             
             return {
-                "success": True,
+                "success": True,  # Request submitted successfully
                 "prompt": prompt,
+                "conversation_id": conversation_id,
                 "video_urls": video_urls,
+                "processing": not has_urls,  # True if video IDs not yet available
                 "response": response
             }
         except Exception as e:

@@ -1,0 +1,13 @@
+"""Quick auth test"""
+from metaai_api import MetaAI
+
+ai = MetaAI()
+result = ai.generate_video_new("A bird flying", auto_poll=False)
+
+print(f"Success: {result.get('success')}")
+print(f"Conversation ID: {result.get('conversation_id')}")
+print(f"Error in response: {result.get('error')}")
+if result.get('response'):
+    events = result['response'].get('events', [])
+    if events and 'error' in events[0].get('data', {}).get('sendMessageStream', {}):
+        print(f"API Error: {events[0]['data']['sendMessageStream']['error']['message']}")

@@ -20,11 +20,13 @@ class GenerationAPI:
     """
     
     ENDPOINT = "https://www.meta.ai/api/graphql"
-    DOC_ID = "83c79c30d655e0ae6f20af0e129101e2"  # Updated from curl.json - TEXT_TO_IMAGE and TEXT_TO_VIDEO
-    IMAGE_DOC_ID = "9d1cbdc2209964994658a3eff662a0eb"  # Working fast doc_id from fast-image.py (Feb 2026)
-    IMAGE_DOC_ID_ALT = "904075722675ba2c1a7b333d4c525a1b"  # Alternate image doc_id from network captures (fallback)
-    FETCH_CONVERSATION_DOC_ID = "e7f802582dbfed8e181b012e010993eb"  # Fetch conversation with populated video URLs
+    # Updated March 11, 2026 - Working doc_ids from live capture
+    DOC_ID = "94e83840d1219339454cd5a6c97c1ece"  # Working image/video generation (March 2026)
+    IMAGE_DOC_ID = "94e83840d1219339454cd5a6c97c1ece"  # Working image generation (March 2026) ✅
+    IMAGE_DOC_ID_ALT = "9d1cbdc2209964994658a3eff662a0eb"  # Previous working (Feb 2026) - fallback
+    FETCH_CONVERSATION_DOC_ID = "9f7f4e20336400df0ea882b6131d2dd6"  # Fetch full conversation (from HAR - returns 18KB)
     FETCH_MEDIA_DOC_ID = "10b7bd5aa8b7537e573e49d701a5b21b"  # Fetch video/image by media ID (returns mediaLibraryFeed with all media)
+    POLL_MEDIA_DOC_ID = "335a1ff137a82e22e0a9724d4bf70b6f"  # Poll individual media ID for video status (from HAR)
     DEFAULT_TIMEOUT = 60  # seconds - increased for image generation which can take time
     
     def __init__(self, session: Optional[requests.Session] = None, cookies: Optional[Dict] = None):
@@ -191,7 +193,6 @@ class GenerationAPI:
             "assistantMessageId": assistant_message_id,
             "userUniqueMessageId": str(kwargs.get('user_unique_message_id', self._generate_unique_id())),
             "turnId": turn_id,
-            "spaceId": None,
             "mode": "create",
             "rewriteOptions": None,
             "attachments": None,
@@ -264,7 +265,7 @@ class GenerationAPI:
                 self.logger.warning("num_images > 1 is not supported by this endpoint; generating a single image")
         
         payload = {
-            "doc_id": self.IMAGE_DOC_ID,
+            "doc_id": self.IMAGE_DOC_ID,  # Using latest doc_id from bash-curl.json (March 2026)
             "variables": variables
         }
         
@@ -678,7 +679,10 @@ class GenerationAPI:
         payload = {
             "doc_id": self.FETCH_CONVERSATION_DOC_ID,
             "variables": {
-                "conversationId": conversation_id
+                "id": conversation_id,
+                "artifactId": None,
+                "includeArtifact": False,
+                "includeMessageList": True  # Must be True to get messages with video IDs
             }
         }
         
@@ -1180,6 +1184,198 @@ class GenerationAPI:
             self.logger.warning(f"Error extracting videos from conversation: {e}")
         
         return video_urls
+    
+    def poll_for_video_ids(
+        self,
+        conversation_id: str,
+        max_attempts: int = 15,
+        wait_seconds: int = 3
+    ) -> List[str]:
+        """
+        Poll conversation to get video IDs and construct Meta AI URLs.
+        
+        NEW APPROACH (March 11, 2026):
+        1. Fetch conversation to get media IDs
+        2. Poll individual media IDs for video status
+        3. Construct Meta AI URLs when ready
+        
+        Videos are viewable at: https://www.meta.ai/create/{media_id}
+        
+        Args:
+            conversation_id: Conversation ID from video generation
+            max_attempts: Maximum polling attempts (default: 15 = ~45s)
+            wait_seconds: Seconds between attempts (default: 3)
+            
+        Returns:
+            List of Meta AI URLs (https://www.meta.ai/create/{id})
+        """
+        self.logger.info(f"Polling for video IDs in conversation {conversation_id}")
+        
+        for attempt in range(1, max_attempts + 1):
+            try:
+                conv_data = self.fetch_conversation(conversation_id)
+                
+                if 'error' in conv_data or conv_data.get('data', {}).get('warmupConversation'):
+                    self.logger.debug(f"Attempt {attempt}/{max_attempts}: Conversation warming up...")
+                    time.sleep(wait_seconds)
+                    continue
+                
+                # Extract video IDs from conversation
+                video_ids = self._extract_video_ids_from_conversation(conv_data)
+                
+                if video_ids:
+                    self.logger.info(f"Found {len(video_ids)} media IDs, polling individually...")
+                    
+                    # Poll each media ID individually to check video status
+                    ready_videos = []
+                    for media_id in video_ids:
+                        media_data = self.poll_media_by_id(media_id)
+                        
+                        # Check if video is ready (has URL or is complete)
+                        if media_data and not media_data.get('error'):
+                            # Media exists, construct Meta AI URL
+                            ready_videos.append(f"https://www.meta.ai/create/{media_id}")
+                            self.logger.debug(f"Media {media_id} is ready")
+                    
+                    if ready_videos:
+                        self.logger.info(f"Found {len(ready_videos)} ready videos on attempt {attempt}")
+                        return ready_videos
+                    else:
+                        self.logger.debug(f"Attempt {attempt}/{max_attempts}: Media IDs found but videos not ready yet")
+                else:
+                    self.logger.debug(f"Attempt {attempt}/{max_attempts}: Video IDs not ready yet")
+                
+                if attempt < max_attempts:
+                    time.sleep(wait_seconds)
+                
+            except Exception as e:
+                self.logger.warning(f"Attempt {attempt}/{max_attempts} failed: {e}")
+                if attempt < max_attempts:
+                    time.sleep(wait_seconds)
+        
+        self.logger.warning(f"Video IDs not available after {max_attempts} attempts (~{max_attempts * wait_seconds}s)")
+        return []
+    
+    def _extract_video_ids_from_conversation(self, conv_data: Dict[str, Any]) -> List[str]:
+        """
+        Extract video IDs from conversation response.
+        
+        Args:
+            conv_data: Conversation data from fetch_conversation
+            
+        Returns:
+            List of video media IDs
+        """
+        video_ids = []
+        
+        try:
+            # Navigate to conversation messages
+            conversation = conv_data.get('data', {}).get('conversation')
+            if not conversation:
+                self.logger.debug("Conversation is null or not ready yet")
+                return []
+                
+            messages = conversation.get('messages', {}).get('edges', [])
+            
+            for edge in messages:
+                node = edge.get('node', {})
+                
+                # Check if this is an assistant message with videos
+                if node.get('__typename') == 'AssistantMessage':
+                    videos = node.get('videos', [])
+                    
+                    for video in videos:
+                        vid_id = video.get('id')
+                        if vid_id and vid_id not in video_ids:
+                            video_ids.append(vid_id)
+                            self.logger.debug(f"Found video ID: {vid_id}")
+            
+        except Exception as e:
+            self.logger.warning(f"Error extracting video IDs from conversation: {e}")
+        
+        return video_ids
+    
+    def _extract_media_ids_from_response(self, response_data: Dict[str, Any]) -> List[str]:
+        """
+        Extract media IDs from initial video generation response.
+        
+        Args:
+            response_data: Response from generate_video containing events
+            
+        Returns:
+            List of media IDs
+        """
+        media_ids = []
+        
+        try:
+            # Check if we have events in the response
+            events = response_data.get('events', [])
+            
+            for event in events:
+                data = event.get('data', {})
+                stream = data.get('sendMessageStream', {})
+                
+                # Look for videos in the stream
+                videos = stream.get('videos', [])
+                for video in videos:
+                    media_id = video.get('id')
+                    if media_id and media_id not in media_ids:
+                        media_ids.append(media_id)
+                        self.logger.debug(f"Found media ID in response: {media_id}")
+        
+        except Exception as e:
+            self.logger.warning(f"Error extracting media IDs from response: {e}")
+        
+        return media_ids
+    
+    def poll_media_by_id(self, media_id: str) -> Dict[str, Any]:
+        """
+        Poll individual media ID to check video status.
+        Uses doc_id 335a1ff137a82e22e0a9724d4bf70b6f from HAR analysis.
+        
+        Args:
+            media_id: Media ID to poll
+            
+        Returns:
+            Response data for the media
+        """
+        self.logger.debug(f"Polling media ID: {media_id}")
+        
+        payload = {
+            "doc_id": self.POLL_MEDIA_DOC_ID,
+            "variables": {
+                "mediaId": media_id,
+                "mediaIdIsNull": False
+            }
+        }
+        
+        headers = {
+            "Accept": "multipart/mixed, application/json",
+            "Accept-Encoding": "gzip, deflate",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Content-Type": "application/json",
+            "Origin": "https://www.meta.ai",
+            "Referer": "https://www.meta.ai/",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+        
+        try:
+            response = self.session.post(
+                self.ENDPOINT,
+                json=payload,
+                headers=headers,
+                timeout=self.DEFAULT_TIMEOUT
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+            else:
+                self.logger.warning(f"Failed to poll media {media_id}: {response.status_code}")
+                return {"error": f"HTTP {response.status_code}"}
+                
+        except Exception as e:
+            self.logger.error(f"Error polling media {media_id}: {e}")
+            return {"error": str(e)}
     
     def fetch_video_urls_from_html(
         self,

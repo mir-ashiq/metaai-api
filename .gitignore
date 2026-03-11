@@ -57,6 +57,7 @@ response_*.txt
 debug_responses/
 html_content.html
 source.html
+dev_tests/
 
 # Debug test files (temporary/experimental)
 debug_*.py
