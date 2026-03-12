@@ -1093,7 +1093,7 @@ class MetaAI:
     def generate_video_new(
         self,
         prompt: str,
-        auto_poll: bool = False,
+        auto_poll: bool = True,
         max_poll_attempts: int = 15,
         poll_wait_seconds: int = 3,
         **kwargs
@@ -1101,12 +1101,13 @@ class MetaAI:
         """
         Generate video using new API (based on captured network requests).
         
-        NOTE: Video generation is asynchronous. Videos are viewable at:
+        NOTE: Video generation is asynchronous. By default, this method automatically
+        polls for video URLs (~24-45s). Videos are viewable at:
         https://www.meta.ai/create/{media_id}
         
         Args:
             prompt: Text description of the video to generate
-            auto_poll: If True, automatically poll for video IDs (default: False)
+            auto_poll: If True, automatically poll for video IDs (default: True)
             max_poll_attempts: Maximum polling attempts when auto_poll=True (default: 15)
             poll_wait_seconds: Seconds between polls (default: 3)
             **kwargs: Additional parameters
@@ -1120,13 +1121,13 @@ class MetaAI:
             
         Example:
             >>> ai = MetaAI(cookies={"datr": "...", "abra_sess": "..."})
-            >>> # Quick submission (check Meta AI manually)
+            >>> # Default: Auto-polls for URLs (waits ~24-45s)
             >>> result = ai.generate_video_new("Astronaut in space")
-            >>> print(f"Track at: https://www.meta.ai/prompt/{result['conversation_id']}")
+            >>> print(f"Video URLs: {result['video_urls']}")
             >>> 
-            >>> # Auto-poll for URLs (waits ~45s)
-            >>> result = ai.generate_video_new("Astronaut in space", auto_poll=True)
-            >>> print(f"Video URL: {result['video_urls'][0]}")
+            >>> # Quick submission (no polling, returns immediately)
+            >>> result = ai.generate_video_new("Astronaut in space", auto_poll=False)
+            >>> print(f"Track at: https://www.meta.ai/prompt/{result['conversation_id']}")
         """
         # Validate inputs
         if not prompt or not prompt.strip():

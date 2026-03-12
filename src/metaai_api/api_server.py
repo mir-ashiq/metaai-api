@@ -170,7 +170,11 @@ class VideoRequest(BaseModel):
     prompt: str
     media_ids: Optional[list] = None
     attachment_metadata: Optional[dict] = None  # {'file_size': int, 'mime_type': str}
-    orientation: Optional[str] = None  # 'VERTICAL', 'LANDSCAPE', or 'SQUARE'
+    auto_poll: bool = True  # Auto-poll for video URLs (default: True)
+    max_poll_attempts: int = Field(15, ge=1, le=60)  # Max polling attempts
+    poll_wait_seconds: int = Field(3, ge=1, le=30)  # Seconds between polls
+    # Deprecated parameters (kept for backwards compatibility)
+    orientation: Optional[str] = None
     wait_before_poll: int = Field(10, ge=0, le=60)
     max_attempts: int = Field(30, ge=1, le=60)
     wait_seconds: int = Field(5, ge=1, le=30)
@@ -357,7 +361,7 @@ async def image(body: ImageRequest) -> Dict[str, Any]:
 
 @app.post("/video")
 async def video(body: VideoRequest) -> Dict[str, Any]:
-    """Generate videos from text prompts (synchronous)."""
+    """Generate videos from text prompts (auto-polls for URLs by default)."""
     if _meta_ai_instance is None:
         return JSONResponse(
             status_code=503,
@@ -369,11 +373,14 @@ async def video(body: VideoRequest) -> Dict[str, Any]:
         )
     ai = _meta_ai_instance
     try:
-        # Use the new generation API with timeout protection
+        # Use the new generation API with auto-polling support
         result = await asyncio.wait_for(
             run_in_threadpool(
                 ai.generate_video_new,
                 prompt=body.prompt,
+                auto_poll=body.auto_poll,
+                max_poll_attempts=body.max_poll_attempts,
+                poll_wait_seconds=body.poll_wait_seconds,
                 media_ids=body.media_ids,
                 attachment_metadata=body.attachment_metadata
             ),

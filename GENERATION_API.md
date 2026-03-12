@@ -94,14 +94,24 @@ cookies = {
 }
 ai = MetaAI(cookies=cookies)
 
-# Generate video
+# Generate video (auto-polls by default)
+result = ai.generate_video_new("Astronaut floating in space")
+
+if result['success']:
+    print(f"Generated {len(result['video_urls'])} videos")
+    for url in result['video_urls']:
+        print(f"Video URL: {url}")
+    # Example: https://www.meta.ai/create/956278367576451
+
+# For quick return without waiting (disable auto-polling)
 result = ai.generate_video_new(
-    prompt="Astronaut floating in space"
+    "Astronaut floating in space",
+    auto_poll=False  # Returns immediately in ~17s
 )
 
 if result['success']:
-    for url in result['video_urls']:
-        print(f"Video URL: {url}")
+    # View videos manually at:
+    print(f"https://www.meta.ai/prompt/{result['conversation_id']}")
 ```
 
 ## Testing

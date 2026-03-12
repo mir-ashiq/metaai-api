@@ -143,10 +143,8 @@ from metaai_api import MetaAI
 
 ai = MetaAI()
 
-# Generate video
-result = ai.generate_video_new(
-    prompt="waves crashing on a beach at sunset"
-)
+# Generate video (auto-polls for URLs by default)
+result = ai.generate_video_new("waves crashing on a beach at sunset")
 
 if result["success"]:
     print(f"Generated {len(result['video_urls'])} videos:")
@@ -157,10 +155,24 @@ if result["success"]:
 **Output:**
 
 ```
-Generated 3 videos:
-https://scontent-arn2-1.xx.fbcdn.net/o1/v/t6/f2/m477/AQO...
-https://scontent-arn2-1.xx.fbcdn.net/o1/v/t6/f2/m259/AQN...
-https://scontent-arn2-1.xx.fbcdn.net/o1/v/t6/f2/m260/AQP...
+Generated 4 videos:
+https://www.meta.ai/create/956278367576451
+https://www.meta.ai/create/956278364243118
+https://www.meta.ai/create/956278370909784
+https://www.meta.ai/create/956278374243117
+```
+
+**Quick Return (No Polling):**
+
+```python
+# For faster response (~17s), disable auto-polling
+result = ai.generate_video_new(
+    "waves crashing",
+    auto_poll=False  # Returns immediately with conversation ID
+)
+
+if result["success"]:
+    print(f"View your videos at: https://www.meta.ai/prompt/{result['conversation_id']}")
 ```
 
 ### Example 3: Upload & Use Images (WORKING ✅)
