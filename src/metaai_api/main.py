@@ -71,22 +71,24 @@ class MetaAI:
         self.proxy = proxy
 
         self.is_authed = (fb_password is not None and fb_email is not None) or cookies is not None
-        
-        # Try loading cookies from .env first if no cookies passed
-        env_cookies = self._load_cookies_from_env()
-        if env_cookies:
-            self.cookies = env_cookies
-            logging.info("✅ Loaded cookies from .env file (cookie-based auth only)")
-            self.is_authed = True
-        elif cookies is not None:
+
+        # Priority: explicit cookies > env cookies > fetched cookies
+        if cookies is not None:
             self.cookies = cookies
             logging.info("Using provided cookies (cookie-based auth only)")
+            self.is_authed = True
         else:
-            self.cookies = self.get_cookies()
-            logging.info("Fetched cookies from Meta AI website")
-            # Update is_authed if we successfully got cookies
-            if self.cookies:
+            env_cookies = self._load_cookies_from_env()
+            if env_cookies:
+                self.cookies = env_cookies
+                logging.info("✅ Loaded cookies from .env file (cookie-based auth only)")
                 self.is_authed = True
+            else:
+                self.cookies = self.get_cookies()
+                logging.info("Fetched cookies from Meta AI website")
+                # Update is_authed if we successfully got cookies
+                if self.cookies:
+                    self.is_authed = True
             
         self.external_conversation_id = None
         self.offline_threading_id = None

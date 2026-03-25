@@ -20,13 +20,13 @@ class GenerationAPI:
     """
     
     ENDPOINT = "https://www.meta.ai/api/graphql"
-    # Updated March 11, 2026 - Working doc_ids from live capture
-    DOC_ID = "94e83840d1219339454cd5a6c97c1ece"  # Working image/video generation (March 2026)
-    IMAGE_DOC_ID = "94e83840d1219339454cd5a6c97c1ece"  # Working image generation (March 2026) ✅
-    IMAGE_DOC_ID_ALT = "9d1cbdc2209964994658a3eff662a0eb"  # Previous working (Feb 2026) - fallback
-    FETCH_CONVERSATION_DOC_ID = "9f7f4e20336400df0ea882b6131d2dd6"  # Fetch full conversation (from HAR - returns 18KB)
-    FETCH_MEDIA_DOC_ID = "10b7bd5aa8b7537e573e49d701a5b21b"  # Fetch video/image by media ID (returns mediaLibraryFeed with all media)
-    POLL_MEDIA_DOC_ID = "335a1ff137a82e22e0a9724d4bf70b6f"  # Poll individual media ID for video status (from HAR)
+    # ✅ UPDATED March 25, 2026 - Fresh working doc_id from browser capture
+    DOC_ID = "d4e29678d29dc9703db0df437793864c"  # ✅ WORKING (March 2026) - TEXT_TO_IMAGE & TEXT_TO_VIDEO
+    IMAGE_DOC_ID = "d4e29678d29dc9703db0df437793864c"  # ✅ Working image generation (fresh from browser)
+    IMAGE_DOC_ID_ALT = "83c79c30d655e0ae6f20af0e129101e2"  # Fallback (archived)
+    FETCH_CONVERSATION_DOC_ID = "9f7f4e20336400df0ea882b6131d2dd6"  # Fetch full conversation
+    FETCH_MEDIA_DOC_ID = "10b7bd5aa8b7537e573e49d701a5b21b"  # Fetch video/image by media ID
+    POLL_MEDIA_DOC_ID = "335a1ff137a82e22e0a9724d4bf70b6f"  # Poll individual media ID for video status
     DEFAULT_TIMEOUT = 60  # seconds - increased for image generation which can take time
     
     def __init__(self, session: Optional[requests.Session] = None, cookies: Optional[Dict] = None):

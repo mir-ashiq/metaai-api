@@ -161,7 +161,7 @@ class VideoGenerator:
         def search_for_urls(obj):
             if isinstance(obj, dict):
                 # Check for common video URL fields
-                for key in ['url', 'videoUrl', 'src']:
+                for key in ['url', 'videoUrl', 'src', 'video_url', 'progressive_url', 'uri']:
                     if key in obj:
                         url = obj[key]
                         if url and isinstance(url, str) and ('http' in url or '.mp4' in url):
