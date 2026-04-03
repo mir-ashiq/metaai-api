@@ -7,7 +7,7 @@
 ✅ **Image Generation**: Fully Working  
 ✅ **Video Generation**: Fully Working  
 ✅ **Image Upload**: Fully Working  
-⚠️ **Chat Functionality**: Currently Unavailable (token authentication issues)  
+✅ **Chat Functionality**: Fully Working  
 ✅ **API Server**: Running and tested
 
 ---
@@ -74,6 +74,11 @@ curl -X POST http://127.0.0.1:8000/image \
 curl -X POST http://127.0.0.1:8000/video \
   -H "Content-Type: application/json" \
   -d '{"prompt": "clouds in the sky"}'
+
+# Chat
+curl -X POST http://127.0.0.1:8000/chat \
+   -H "Content-Type: application/json" \
+   -d '{"message": "What is 7% of 10000?", "stream": false, "new_conversation": true}'
 ```
 
 ---
@@ -127,19 +132,9 @@ python simple_example.py
 
 ## ⚠️ Known Issues
 
-### Chat Functionality Not Working
+### Chat Functionality
 
-**Issue**: Chat/prompt methods require `lsd` and `fb_dtsg` tokens which cause authentication loops.
-
-**Affected Methods**:
-
-- `ai.prompt()`
-- `ai.ask()`
-- Chat-related streaming
-
-**Workaround**: Use image and video generation features which don't require these tokens.
-
-**Status**: Under investigation. See [CHANGES_AND_COOKIES.md](CHANGES_AND_COOKIES.md) for technical details.
+Chat now works through the OAuth-based GraphQL stream used by Meta AI web. The SDK and API server both expose the same chat path through `ai.prompt()` and `POST /chat`.
 
 ---
 
@@ -158,6 +153,14 @@ python simple_example.py
 - API details: [GENERATION_API.md](GENERATION_API.md)
 - Technical changes: [CHANGES_AND_COOKIES.md](CHANGES_AND_COOKIES.md)
 - Examples: [examples/](examples/) directory
+
+### Full Feature Validation
+
+Run the complete SDK + API test suite:
+
+```bash
+python scripts/test_all_features_complete.py --base-url http://127.0.0.1:8001 --output tests/integration/outputs/feature_test_report_sdk_api_final.json
+```
 
 ## 💻 Code Integration Example
 

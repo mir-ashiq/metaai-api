@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import time
 import urllib.parse
 import uuid
@@ -30,19 +31,16 @@ MAX_RETRIES = 3
 
 class MetaAI:
     """
-    A class to interact with Meta AI for image and video generation.
+    A class to interact with Meta AI for chat, image and video generation.
     
     WORKING FEATURES:
     - generate_image_new(): Generate AI images with custom orientations
     - generate_video_new(): Create AI videos from text prompts
     - upload_image(): Upload images for generation/editing
     
-    UNAVAILABLE FEATURES:
-    - prompt() / ask(): Chat functionality (requires problematic lsd/fb_dtsg tokens)
-    - Streaming chat responses
-    - Real-time data queries
-    
-    Authentication: Uses cookie-based auth only (datr, abra_sess, ecto_1_sess)
+    Authentication: Uses cookie-based auth for all features.
+    Chat additionally requires a valid OAuth access token (ecto1:...), which can be
+    loaded from META_AI_ACCESS_TOKEN or extracted from meta.ai page HTML.
     """
 
     def __init__(
@@ -408,255 +406,197 @@ class MetaAI:
         orientation: Optional[str] = None,
     ) -> Union[Dict, Generator[Dict, None, None]]:
         """
-        DEPRECATED: Chat functionality is currently unavailable.
-        
-        Chat operations require lsd/fb_dtsg tokens which cause authentication challenges.
-        Use the working image and video generation methods instead:
-        - generate_image_new() for AI image generation
-        - generate_video_new() for AI video generation
-        
-        This method is kept for API compatibility but will not work for chat operations.
-        It may still be used internally for legacy image generation flows.
+        Send a chat prompt to Meta AI using OAuth + JSON GraphQL SSE.
 
         Args:
             message (str): The message to send.
             stream (bool): Whether to stream the response or not. Defaults to False.
-            attempts (int): The number of attempts to retry if an error occurs. Defaults to 0.
+            attempts (int): Kept for compatibility; not used by this implementation.
             new_conversation (bool): Whether to start a new conversation or not. Defaults to False.
-            images (list): List of image URLs to animate (for video generation). Defaults to None.
-            media_ids (list): List of media IDs from uploaded images to include in the prompt. Defaults to None.
-            attachment_metadata (dict): Optional dict with 'file_size' (int) and 'mime_type' (str). Defaults to None.
-            is_image_generation (bool): Whether this is for image generation (vs chat). Defaults to False.
-            orientation (str): Image orientation for generation. Valid values: "LANDSCAPE", "VERTICAL", "SQUARE". Defaults to "VERTICAL".
+            images (list): Kept for compatibility.
+            media_ids (list): Optional media IDs to attach.
+            attachment_metadata (dict): Kept for compatibility.
+            is_image_generation (bool): Kept for compatibility.
+            orientation (str): Kept for compatibility.
 
         Returns:
-            dict: A dictionary containing the response message and sources.
+            dict or generator: Chat response with message, sources, and media.
 
         Raises:
-            Exception: If unable to obtain a valid response after several attempts.
+            Exception: If authentication or request fails.
         """
-        if not self.is_authed:
-            self.access_token = self.get_access_token()
-            auth_payload = {"access_token": self.access_token}
-            url = "https://graph.meta.ai/graphql?locale=user"
+        chat_doc_id = "ac0bad4b9787a393e160fb39f43404c1"
 
-        else:
-            # Chat functionality is currently unavailable
-            # This requires lsd/fb_dtsg tokens which cause authentication issues
-            logging.warning("Chat operations are not supported - use image/video generation instead")
-            auth_payload = {
-                "fb_dtsg": "",
-                "lsd": "",
-            }
-            url = "https://www.meta.ai/api/graphql/"
+        if not self.access_token:
+            self.access_token = self.extract_access_token_from_page()
+        if not self.access_token:
+            raise Exception(
+                "Chat requires META_AI_ACCESS_TOKEN (ecto1:...) or successful token extraction from meta.ai"
+            )
 
         if not self.external_conversation_id or new_conversation:
-            external_id = str(uuid.uuid4())
-            self.external_conversation_id = external_id
-        
-        # Handle video generation with images
-        flash_video_input = {"images": []}
-        if images:
-            flash_video_input = {"images": images}
-        
-        # Handle uploaded media attachments
-        attachments_v2 = []
-        if media_ids:
-            attachments_v2 = [str(mid) for mid in media_ids]
-        
-        # Generate offline threading IDs
-        offline_threading_id = generate_offline_threading_id()
-        bot_offline_threading_id = str(int(offline_threading_id) + 1)
-        thread_session_id = str(uuid.uuid4())
-        
-        # Determine entrypoint based on context
-        if images:
-            # Video generation with images uses CHAT
-            entrypoint = "KADABRA__CHAT__UNIFIED_INPUT_BAR"
-        elif media_ids or orientation:
-            # Image generation with orientation OR uploaded images uses DISCOVER
-            entrypoint = "KADABRA__DISCOVER__UNIFIED_INPUT_BAR"
-        else:
-            entrypoint = "ABRA__CHAT__TEXT"
-        
-        # Set friendly name based on entrypoint
-        friendly_name = "useKadabraSendMessageMutation" if entrypoint.startswith("KADABRA") else "useAbraSendMessageMutation"
-        
-        # Build variables dictionary
-        is_kadabra = entrypoint.startswith("KADABRA")
-        
-        if is_kadabra:
-            # Full Kadabra variables for image generation
-            variables = {
-                "message": {"sensitive_string_value": message},
-                "externalConversationId": self.external_conversation_id,
-                "offlineThreadingId": offline_threading_id,
-                "threadSessionId": thread_session_id,
-                "isNewConversation": new_conversation or not self.offline_threading_id,
-                "suggestedPromptIndex": None,
-                "promptPrefix": None,
-                "entrypoint": entrypoint,
-                "attachments": [],
-                "attachmentsV2": attachments_v2,
-                "activeMediaSets": [],
-                "activeCardVersions": [],
-                "activeArtifactVersion": None,
-                "userUploadEditModeInput": None,
-                "reelComposeInput": None,
-                "qplJoinId": uuid.uuid4().hex[:17],
-                "sourceRemixPostId": None,
-                "gkPlannerOrReasoningEnabled": True,
-                "selectedModel": "BASIC_OPTION",
-                "conversationMode": None,
-                "selectedAgentType": "PLANNER",
-                "agentSettings": None,
-                "conversationStarterId": None,
-                "promptType": None,
-                "artifactRewriteOptions": None,
-                "imagineOperationRequest": None,
-                "imagineClientOptions": {"orientation": str(orientation).upper() if orientation else "VERTICAL"},
-                "sparkSnapshotId": None,
-                "topicPageId": None,
-                "includeSpace": False,
-                "storybookId": None,
-                "messagePersistentInput": {
-                    "attachment_size": attachment_metadata.get('file_size') if attachment_metadata else None,
-                    "attachment_type": attachment_metadata.get('mime_type') if attachment_metadata else None,
-                    "bot_message_offline_threading_id": bot_offline_threading_id,
-                    "conversation_mode": None,
-                    "external_conversation_id": self.external_conversation_id,
-                    "is_new_conversation": new_conversation or not self.offline_threading_id,
-                    "meta_ai_entry_point": entrypoint,
-                    "offline_threading_id": offline_threading_id,
-                    "prompt_id": None,
-                    "prompt_session_id": thread_session_id,
-                },
-                "alakazam_enabled": True,
-                "skipInFlightMessageWithParams": None,
-                "__relay_internal__pv__KadabraSocialSearchEnabledrelayprovider": False,
-                "__relay_internal__pv__KadabraZeitgeistEnabledrelayprovider": False,
-                "__relay_internal__pv__alakazam_enabledrelayprovider": True,
-                "__relay_internal__pv__sp_kadabra_survey_invitationrelayprovider": True,
-                "__relay_internal__pv__enable_kadabra_partial_resultsrelayprovider": False,
-                "__relay_internal__pv__AbraArtifactsEnabledrelayprovider": True,
-                "__relay_internal__pv__KadabraMemoryEnabledrelayprovider": False,
-                "__relay_internal__pv__AbraPlannerEnabledrelayprovider": True,
-                "__relay_internal__pv__AbraWidgetsEnabledrelayprovider": False,
-                "__relay_internal__pv__KadabraDeepResearchEnabledrelayprovider": False,
-                "__relay_internal__pv__KadabraThinkHarderEnabledrelayprovider": False,
-                "__relay_internal__pv__KadabraVergeEnabledrelayprovider": False,
-                "__relay_internal__pv__KadabraSpacesEnabledrelayprovider": False,
-                "__relay_internal__pv__KadabraProductSearchEnabledrelayprovider": False,
-                "__relay_internal__pv__KadabraAreServiceEnabledrelayprovider": False,
-                "__relay_internal__pv__kadabra_render_reasoning_response_statesrelayprovider": True,
-                "__relay_internal__pv__kadabra_reasoning_cotrelayprovider": False,
-                "__relay_internal__pv__AbraSearchInlineReferencesEnabledrelayprovider": True,
-                "__relay_internal__pv__AbraComposedTextWidgetsrelayprovider": True,
-                "__relay_internal__pv__KadabraNewCitationsEnabledrelayprovider": True,
-                "__relay_internal__pv__WebPixelRatiorelayprovider": 1,
-                "__relay_internal__pv__KadabraVideoDeliveryRequestrelayprovider": {
-                    "dash_manifest_requests": [{}],
-                    "progressive_url_requests": [{"quality": "HD"}, {"quality": "SD"}]
-                },
-                "__relay_internal__pv__KadabraWidgetsRedesignEnabledrelayprovider": False,
-                "__relay_internal__pv__kadabra_enable_send_message_retryrelayprovider": True,
-                "__relay_internal__pv__KadabraEmailCalendarIntegrationrelayprovider": False,
-                "__relay_internal__pv__ClippyUIrelayprovider": False,
-                "__relay_internal__pv__kadabra_reels_connect_featuresrelayprovider": False,
-                "__relay_internal__pv__AbraBugNubrelayprovider": False,
-                "__relay_internal__pv__AbraRedteamingrelayprovider": False,
-                "__relay_internal__pv__AbraDebugDevOnlyrelayprovider": False,
-                "__relay_internal__pv__kadabra_enable_open_in_editor_message_actionrelayprovider": True,
-                "__relay_internal__pv__BloksDeviceContextrelayprovider": {"pixel_ratio": 1},
-                "__relay_internal__pv__AbraThreadsEnabledrelayprovider": False,
-                "__relay_internal__pv__kadabra_story_builder_enabledrelayprovider": False,
-                "__relay_internal__pv__kadabra_imagine_canvas_enable_dev_settingsrelayprovider": False,
-                "__relay_internal__pv__kadabra_create_media_deletionrelayprovider": False,
-                "__relay_internal__pv__kadabra_moodboardrelayprovider": False,
-                "__relay_internal__pv__AbraArtifactDragImagineFromConversationrelayprovider": True,
-                "__relay_internal__pv__kadabra_media_item_renderer_heightrelayprovider": 545,
-                "__relay_internal__pv__kadabra_media_item_renderer_widthrelayprovider": 620,
-                "__relay_internal__pv__AbraQPDocUploadNuxTriggerNamerelayprovider": "meta_dot_ai_abra_web_doc_upload_nux_tour",
-                "__relay_internal__pv__AbraSurfaceNuxIDrelayprovider": "12177",
-                "__relay_internal__pv__KadabraConversationRenamingrelayprovider": True,
-                "__relay_internal__pv__AbraIsLoggedOutrelayprovider": not self.is_authed,
-                "__relay_internal__pv__KadabraCanvasDisplayHeaderV2relayprovider": False,
-                "__relay_internal__pv__AbraArtifactEditorDebugModerelayprovider": False,
-                "__relay_internal__pv__AbraArtifactEditorDownloadHTMLEnabledrelayprovider": False,
-                "__relay_internal__pv__kadabra_create_row_hover_optionsrelayprovider": False,
-                "__relay_internal__pv__kadabra_media_info_pillsrelayprovider": True,
-                "__relay_internal__pv__KadabraConcordInternalProfileBadgeEnabledrelayprovider": False,
-                "__relay_internal__pv__KadabraSocialGraphrelayprovider": True,
-            }
-        else:
-            # Simpler Abra variables for chat
-            variables = {
-                "message": {"sensitive_string_value": message},
-                "externalConversationId": self.external_conversation_id,
-                "offlineThreadingId": offline_threading_id,
-                "suggestedPromptIndex": None,
-                "flashVideoRecapInput": flash_video_input,
-                "flashPreviewInput": None,
-                "promptPrefix": None,
-                "entrypoint": entrypoint,
-                "attachments": [],
-                "attachmentsV2": attachments_v2,
-                "messagePersistentInput": {
-                    "attachment_size": attachment_metadata.get('file_size') if attachment_metadata else None,
-                    "attachment_type": attachment_metadata.get('mime_type') if attachment_metadata else None,
-                    "external_conversation_id": self.external_conversation_id,
-                    "offline_threading_id": offline_threading_id,
-                    "meta_ai_entry_point": entrypoint,
-                } if media_ids else None,
-                "icebreaker_type": "TEXT",
-                "__relay_internal__pv__AbraDebugDevOnlyrelayprovider": False,
-                "__relay_internal__pv__WebPixelRatiorelayprovider": 1,
-            }
-        
-        payload = {
-            **auth_payload,
-            "fb_api_caller_class": "RelayModern",
-            "fb_api_req_friendly_name": friendly_name,
-            "variables": json.dumps(variables),
-            "server_timestamps": "true",
-            "doc_id": "24895882500088854" if is_kadabra else "7783822248314888",
-        }
-        payload = urllib.parse.urlencode(payload)  # noqa
+            self.external_conversation_id = str(uuid.uuid4())
+
+        is_new_conversation = bool(new_conversation)
+        conversation_id = self.external_conversation_id
+
+        attachments_v2 = [str(mid) for mid in (media_ids or [])]
+
         headers = {
-            "content-type": "application/x-www-form-urlencoded",
-            "x-fb-friendly-name": friendly_name,
+            "cookie": self.get_cookie_header(),
+            "authorization": f"OAuth {self.access_token}",
+            "user-agent": self.session.headers.get(
+                "user-agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            ),
+            "content-type": "application/json",
+            "origin": "https://www.meta.ai",
+            "referer": "https://www.meta.ai/",
+            "accept-language": "en-US,en;q=0.9",
+            "accept": "text/event-stream",
         }
-        # Add lsd header for authenticated requests
-        if self.cookies.get("lsd"):
-            headers["x-fb-lsd"] = self.cookies["lsd"]
-        if self.is_authed and "abra_sess" in self.cookies:
-            headers["cookie"] = f'abra_sess={self.cookies["abra_sess"]}'
-            # Recreate the session to avoid cookie leakage when user is authenticated
-            self.session = requests.Session()
-            if self.proxy:
-                self.session.proxies = self.proxy
 
-        response = self.session.post(url, headers=headers, data=payload, stream=stream)
-        
-        # Check for authentication errors (expired ecto_1_sess)
+        payload = {
+            "doc_id": chat_doc_id,
+            "variables": {
+                "conversationId": conversation_id,
+                "content": message,
+                "userMessageId": str(uuid.uuid4()),
+                "assistantMessageId": str(uuid.uuid4()),
+                "userUniqueMessageId": str(uuid.uuid4().int)[:19],
+                "turnId": str(uuid.uuid4()),
+                "mode": "create",
+                "isNewConversation": is_new_conversation,
+                "clientTimezone": "Asia/Kolkata",
+                "entryPoint": "KADABRA__UNKNOWN",
+                "promptSessionId": str(uuid.uuid4()),
+                "userAgent": headers["user-agent"],
+                "currentBranchPath": "0",
+                "promptEditType": "new_message",
+                "userLocale": "en-US",
+                "attachments": None,
+                "attachmentsV2": attachments_v2 if attachments_v2 else None,
+                "mentions": None,
+                "rewriteOptions": None,
+                "imagineOperationRequest": None,
+            },
+        }
+
+        response = self.session.post(
+            "https://www.meta.ai/api/graphql",
+            headers=headers,
+            json=payload,
+            stream=True,
+            timeout=(10, 120),
+        )
+
         if self._check_response_for_auth_error(response):
-            raise Exception("Authentication failed - please refresh cookies using auto_refresh_cookies.py or refresh_cookies.py")
-        
-        if not stream:
-            raw_response = response.text
-            last_streamed_response = self.extract_last_response(raw_response)
-            if not last_streamed_response:
-                return self.retry(message, stream=stream, attempts=attempts, new_conversation=new_conversation, images=images, media_ids=media_ids, attachment_metadata=attachment_metadata, is_image_generation=is_image_generation, orientation=orientation)
+            raise Exception("Authentication failed - please refresh cookies")
+        response.raise_for_status()
 
-            extracted_data = self.extract_data(last_streamed_response)
-            return extracted_data
+        def _sanitize_assistant_text(
+            text: str,
+            user_message: str,
+            remove_embedded_prompt: bool = False,
+        ) -> str:
+            """Strip prompt-echo artifacts occasionally appended by stream snapshots."""
+            cleaned = (text or "").strip()
+            prompt = (user_message or "").strip()
+            if not cleaned or not prompt:
+                return cleaned
 
-        else:
-            lines = response.iter_lines()
-            is_error = json.loads(next(lines))
-            if len(is_error.get("errors", [])) > 0:
-                return self.retry(message, stream=stream, attempts=attempts, new_conversation=new_conversation, images=images, media_ids=media_ids, attachment_metadata=attachment_metadata, is_image_generation=is_image_generation, orientation=orientation)
-            return self.stream_response(lines)
+            # Remove embedded user-prompt echoes when mixed into assistant output.
+            if remove_embedded_prompt and prompt in cleaned and cleaned != prompt:
+                cleaned = cleaned.replace(prompt, "").strip()
+
+            # Remove repeated trailing user prompt echoes.
+            while cleaned.endswith(prompt):
+                cleaned = cleaned[: -len(prompt)].rstrip()
+
+            return cleaned
+
+        def _replace_inline_tags(match: re.Match) -> str:
+            try:
+                json_content = json.loads(match.group(1))
+                name = json_content.get("name")
+                return name if isinstance(name, str) else ""
+            except json.JSONDecodeError:
+                return ""
+
+        def _normalize_assistant_text(text: str) -> str:
+            """Replace Meta inline entities with readable text and trim output."""
+            normalized = text or ""
+            normalized = re.sub(r"<inline>({.*?})</inline>", _replace_inline_tags, normalized)
+            normalized = re.sub(r"<inline>.*?</inline>", "", normalized)
+            return normalized.strip()
+
+        def _stream_messages() -> Generator[Dict, None, None]:
+            last_snapshot = ""
+            for raw_line in response.iter_lines(decode_unicode=True):
+                if not raw_line or not raw_line.startswith("data:"):
+                    continue
+                try:
+                    event = json.loads(raw_line[5:].strip())
+                except Exception:
+                    continue
+
+                stream_data = event.get("data", {}).get("sendMessageStream", {})
+                content = stream_data.get("content")
+                if not content:
+                    continue
+
+                if not last_snapshot:
+                    delta = content
+                elif content.startswith(last_snapshot):
+                    delta = content[len(last_snapshot):]
+                elif content == last_snapshot:
+                    delta = ""
+                else:
+                    # If stream resets or changes format, fall back to the latest content.
+                    delta = content
+
+                last_snapshot = content
+                delta = _normalize_assistant_text(delta)
+                if not delta:
+                    continue
+
+                if stream_data.get("conversationId"):
+                    self.external_conversation_id = stream_data["conversationId"]
+
+                yield {"message": delta, "sources": [], "media": []}
+
+            response.close()
+
+        if stream:
+            return _stream_messages()
+
+        last_stream_content = ""
+        for raw_line in response.iter_lines(decode_unicode=True):
+            if not raw_line or not raw_line.startswith("data:"):
+                continue
+            try:
+                event = json.loads(raw_line[5:].strip())
+            except Exception:
+                continue
+
+            stream_data = event.get("data", {}).get("sendMessageStream", {})
+            content = stream_data.get("content")
+            if content:
+                last_stream_content = content
+            if stream_data.get("conversationId"):
+                self.external_conversation_id = stream_data["conversationId"]
+
+        response.close()
+
+        final_message = _sanitize_assistant_text(
+            _normalize_assistant_text(last_stream_content),
+            message,
+            remove_embedded_prompt=True,
+        )
+        if not final_message:
+            raise Exception("No chat response parsed from Meta AI stream")
+
+        return {"message": final_message, "sources": [], "media": []}
 
     def retry(self, message: str, stream: bool = False, attempts: int = 0, new_conversation: bool = False, images: Optional[list] = None, media_ids: Optional[list] = None, attachment_metadata: Optional[Dict[str, Any]] = None, is_image_generation: bool = False, orientation: Optional[str] = None):
         """

@@ -79,6 +79,7 @@ test_current_flow.py
 test_simple_approach.py
 test_render_fix.py
 test_success.py
+working-chat-code.py
 working-main.py
 test.py
 test-video.py
@@ -138,3 +139,7 @@ htmlcov/
 # network.json
 # network-*.json
 test_api.html
+
+# Generated feature test reports
+chat_feature_test_results*.json
+tests/integration/outputs/feature_test_report*.json

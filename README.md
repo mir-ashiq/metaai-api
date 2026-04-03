@@ -51,23 +51,23 @@ All in one SDK
 
 ### 🌟 Core Capabilities
 
-> **⚠️ Current Status Notice:**  
-> **Chat functionality** is currently unavailable due to authentication challenges.  
-> **Image & Video Generation** are fully functional using simple cookie-based authentication (only 3 cookies needed).  
+> **✅ Current Status Notice:**  
+> **Chat, Image, and Video functionality** are now working with cookie-based authentication plus the Meta AI OAuth token used by the SDK and API server.  
+> **Image & Video Generation** remain fully functional using simple cookie-based authentication (only 3 cookies needed).  
 > See [docs/analysis/RELEASE_SUMMARY.md](docs/analysis/RELEASE_SUMMARY.md) for recent implementation notes.
 
-| Feature                      | Description                                     | Status         |
-| ---------------------------- | ----------------------------------------------- | -------------- |
-| 💬 **Intelligent Chat**      | Powered by Llama 3 with internet access         | ⚠️ Unavailable |
-| 📤 **Image Upload**          | Upload images for generation/analysis           | ✅ Working     |
-| 🎨 **Image Generation**      | Create stunning AI-generated images             | ✅ Working     |
-| 🎬 **Video Generation**      | Generate videos from text or uploaded images    | ✅ Working     |
-| 🔍 **Image Analysis**        | Describe, analyze, and extract info from images | ⚠️ Unavailable |
-| 🌐 **Real-time Data**        | Get current information via Bing integration    | ⚠️ Unavailable |
-| 📚 **Source Citations**      | Responses include verifiable sources            | ⚠️ Unavailable |
-| 🔄 **Streaming Support**     | Real-time response streaming                    | ⚠️ Unavailable |
-| 🔐 **Cookie Authentication** | Uses session cookies (no problematic tokens)    | ✅ Working     |
-| 🌍 **Proxy Support**         | Route requests through proxies                  | ✅ Working     |
+| Feature                      | Description                                     | Status     |
+| ---------------------------- | ----------------------------------------------- | ---------- |
+| 💬 **Intelligent Chat**      | Powered by Llama 3 with internet access         | ✅ Working |
+| 📤 **Image Upload**          | Upload images for generation/analysis           | ✅ Working |
+| 🎨 **Image Generation**      | Create stunning AI-generated images             | ✅ Working |
+| 🎬 **Video Generation**      | Generate videos from text or uploaded images    | ✅ Working |
+| 🔍 **Image Analysis**        | Describe, analyze, and extract info from images | ✅ Working |
+| 🌐 **Real-time Data**        | Get current information via Bing integration    | ✅ Working |
+| 📚 **Source Citations**      | Responses include verifiable sources            | ✅ Working |
+| 🔄 **Streaming Support**     | Real-time response streaming                    | ✅ Working |
+| 🔐 **Cookie Authentication** | Uses session cookies (no problematic tokens)    | ✅ Working |
+| 🌍 **Proxy Support**         | Route requests through proxies                  | ✅ Working |
 
 ---
 
@@ -104,7 +104,7 @@ pip install -e ".[api]"   # SDK + API server
 
 ## 🚀 Quick Start
 
-> **⚠️ Note:** Chat functionality is currently unavailable. Use the working **Image Generation** and **Video Generation** features below.
+> **Note:** Chat functionality is available. Use the working **Chat**, **Image Generation**, and **Video Generation** features below.
 
 ### Example 1: Generate Images (WORKING ✅)
 
@@ -327,9 +327,9 @@ print(response["message"])
 
 ## 🌐 REST API Server (Optional)
 
-Deploy Meta AI as a REST API service! **Image and video generation endpoints are fully functional.**
+Deploy Meta AI as a REST API service! **Chat, image, and video endpoints are fully functional.**
 
-> **⚠️ Note**: Chat endpoint is currently unavailable due to token authentication issues.
+> **Note**: Chat now uses the OAuth token extracted from Meta AI and the same SDK flow is exposed through the API server.
 
 ### Installation
 
@@ -358,16 +358,16 @@ Server starts instantly (no token pre-fetching delays).
 
 ### API Endpoints
 
-| Endpoint               | Method | Description                            | Status         |
-| ---------------------- | ------ | -------------------------------------- | -------------- |
-| `/healthz`             | GET    | Health check                           | ✅ Working     |
-| `/upload`              | POST   | Upload images for generation           | ✅ Working     |
-| `/image`               | POST   | Generate images from text              | ✅ Working     |
-| `/video`               | POST   | Generate video (blocks until complete) | ✅ Working     |
-| `/video/extend`        | POST   | Extend video from media ID             | ✅ Working     |
-| `/video/async`         | POST   | Start async video generation           | ✅ Working     |
-| `/video/jobs/{job_id}` | GET    | Poll async job status                  | ✅ Working     |
-| `/chat`                | POST   | Send chat messages                     | ⚠️ Unavailable |
+| Endpoint               | Method | Description                            | Status     |
+| ---------------------- | ------ | -------------------------------------- | ---------- |
+| `/healthz`             | GET    | Health check                           | ✅ Working |
+| `/upload`              | POST   | Upload images for generation           | ✅ Working |
+| `/image`               | POST   | Generate images from text              | ✅ Working |
+| `/video`               | POST   | Generate video (blocks until complete) | ✅ Working |
+| `/video/extend`        | POST   | Extend video from media ID             | ✅ Working |
+| `/video/async`         | POST   | Start async video generation           | ✅ Working |
+| `/video/jobs/{job_id}` | GET    | Poll async job status                  | ✅ Working |
+| `/chat`                | POST   | Send chat messages                     | ✅ Working |
 
 ### Example Usage (Working Endpoints)
 
@@ -430,6 +430,16 @@ while True:
 - **Image Generation**: ~2 minutes (returns 4 images)
 - **Video Generation**: ~40-60 seconds (returns 3-4 videos)
 - **Upload**: < 5 seconds
+
+### Test All Features
+
+Run the comprehensive SDK + API test runner to verify chat, upload, image, video, async, and extend flows end-to-end:
+
+```bash
+python scripts/test_all_features_complete.py --base-url http://127.0.0.1:8001 --output tests/integration/outputs/feature_test_report_sdk_api_final.json
+```
+
+Add `--video-auto-poll` if you want the runner to wait for final media URLs during video checks.
 
 ---
 

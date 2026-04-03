@@ -3,13 +3,14 @@
 > **✅ Status: FULLY WORKING**  
 > Image and video generation features are operational and tested. See [QUICK_START.md](QUICK_START.md) for setup.
 
-This implementation is based on captured network requests from Meta AI's web interface for image and video generation.
+This implementation is based on captured network requests from Meta AI's web interface for chat, image, and video generation.
 
 ## Features
 
 - **Image Generation**: Generate images from text prompts with custom orientation ✅ Working
 - **Video Generation**: Generate videos from text prompts ✅ Working
 - **Image Upload**: Upload images for generation/editing ✅ Working
+- **Chat**: Send chat prompts and stream responses ✅ Working
 - **Cookie-based Authentication**: Uses browser cookies from Meta AI (no `lsd`/`fb_dtsg` needed)
 - **Multipart Response Parsing**: Handles Meta AI's multipart/mixed responses
 - **Optimized Polling**: Fast 2-second intervals with progressive backoff
@@ -47,6 +48,8 @@ pip install -e .
 
    > **Note**: Only these 3 cookies are required for image/video generation. Other cookies like `lsd`, `fb_dtsg` are NOT needed.
 
+For chat usage, the SDK also needs a Meta AI OAuth access token. The SDK can load it from `META_AI_ACCESS_TOKEN` or extract it from the Meta AI page when cookies are valid.
+
 ## Usage
 
 ### Image Generation
@@ -76,6 +79,16 @@ if result['success']:
     print(f"Generated {len(result['image_urls'])} images:")
     for url in result['image_urls']:
         print(f"  {url}")
+```
+
+### Chat
+
+```python
+from metaai_api import MetaAI
+
+ai = MetaAI()
+response = ai.prompt("What is 7% of 10000?", stream=False, new_conversation=True)
+print(response["message"])
 ```
 
 ### Video Generation
@@ -131,6 +144,12 @@ python test_generation.py
 ```
 
 This will test both image and video generation using the cookies from your `.env` file.
+
+For the full SDK + API suite, run:
+
+```bash
+python scripts/test_all_features_complete.py --base-url http://127.0.0.1:8001 --output tests/integration/outputs/feature_test_report_sdk_api_final.json
+```
 
 ## API Details
 
