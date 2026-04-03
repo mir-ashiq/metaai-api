@@ -22,6 +22,7 @@ class GenerationAPI:
     ENDPOINT = "https://www.meta.ai/api/graphql"
     # ✅ UPDATED March 25, 2026 - Fresh working doc_id from browser capture
     DOC_ID = "d4e29678d29dc9703db0df437793864c"  # ✅ WORKING (March 2026) - TEXT_TO_IMAGE & TEXT_TO_VIDEO
+    EXTEND_VIDEO_DOC_ID = "865d6fe804a7ea98fbce7e562b1d61ce"  # EXTEND_VIDEO mutation from HAR
     IMAGE_DOC_ID = "d4e29678d29dc9703db0df437793864c"  # ✅ Working image generation (fresh from browser)
     IMAGE_DOC_ID_ALT = "83c79c30d655e0ae6f20af0e129101e2"  # Fallback (archived)
     FETCH_CONVERSATION_DOC_ID = "9f7f4e20336400df0ea882b6131d2dd6"  # Fetch full conversation
@@ -53,6 +54,13 @@ class GenerationAPI:
     def _default_user_agent(self) -> str:
         """Default user agent string"""
         return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0"
+
+    def _normalize_media_id(self, media_id: Any) -> Optional[str]:
+        """Normalize media IDs and drop transient placeholders such as pending:* tokens."""
+        value = str(media_id).strip()
+        if not value or value.startswith("pending:"):
+            return None
+        return value
 
     def _check_response_for_auth_error(self, response: requests.Response) -> bool:
         """
@@ -140,9 +148,10 @@ class GenerationAPI:
         if media_ids:
             attachments_v2 = [str(mid) for mid in media_ids]
 
-        # Determine operation type based on media_ids presence
+        # Determine operation type based on operation and media_ids presence
         is_image_to_image = operation == "TEXT_TO_IMAGE" and media_ids and len(media_ids) > 0
         is_image_to_video = operation == "TEXT_TO_VIDEO" and media_ids and len(media_ids) > 0
+        is_extend_video = operation == "EXTEND_VIDEO"
         
         # Build imagineOperationRequest based on operation type
         if is_image_to_image:
@@ -169,6 +178,20 @@ class GenerationAPI:
                     "numMedia": 1
                 }
             }
+        elif is_extend_video:
+            source_media_id = kwargs.get('extend_source_media_id')
+            source_media_url = kwargs.get('extend_source_media_url')
+            if not source_media_id:
+                raise ValueError("extend_source_media_id is required for EXTEND_VIDEO")
+
+            imagine_request = {
+                "operation": "EXTEND_VIDEO",
+                "extendVideoParams": {
+                    "sourceMediaEntId": str(source_media_id),
+                    "sourceMediaUrl": source_media_url,
+                    "numMedia": 1,
+                }
+            }
         else:
             # Use textToImageParams or textToVideoParams for text-based generation
             if operation == "TEXT_TO_VIDEO":
@@ -193,7 +216,7 @@ class GenerationAPI:
             "assistantMessageId": assistant_message_id,
             "userUniqueMessageId": str(kwargs.get('user_unique_message_id', self._generate_unique_id())),
             "turnId": turn_id,
-            "mode": "create",
+            "mode": None if is_extend_video else "create",
             "rewriteOptions": None,
             "attachments": None,
             "attachmentsV2": attachments_v2,
@@ -207,18 +230,44 @@ class GenerationAPI:
             "clientLatitude": None,
             "clientLongitude": None,
             "devicePixelRatio": kwargs.get('device_pixel_ratio', 1.25),
-            "entryPoint": None,
+            "entryPoint": kwargs.get('entry_point', None if not is_extend_video else "KADABRA__IMAGINE_UNIFIED_CANVAS"),
             "promptSessionId": prompt_session_id,
             "promptType": None,
             "conversationStarterId": None,
             "userAgent": kwargs.get('user_agent', self._default_user_agent()),
-            "currentBranchPath": None,
+            "currentBranchPath": kwargs.get('current_branch_path', None if not is_extend_video else "2"),
             "promptEditType": "new_message",
             "userLocale": kwargs.get('locale', "en-US"),
-            "userEventId": None
+            "userEventId": None,
+            "requestedToolCall": None,
         }
         
         return variables
+
+    def _extract_source_media_url(self, media_data: Dict[str, Any], media_id: str) -> Optional[str]:
+        """Extract source media URL from a fetch_media_by_id response."""
+        try:
+            data = media_data.get('data', {})
+
+            create_route = data.get('createRouteMedia', {})
+            route_id = create_route.get('id')
+            if not route_id or str(route_id) == str(media_id):
+                candidate = create_route.get('url') or create_route.get('fallbackUrl')
+                if candidate:
+                    return candidate
+
+            edges = data.get('mediaLibraryFeed', {}).get('edges', [])
+            for edge in edges:
+                node = edge.get('node', {})
+                for video in node.get('videos', []):
+                    if str(video.get('id')) == str(media_id):
+                        candidate = video.get('url') or video.get('fallbackUrl')
+                        if candidate:
+                            return candidate
+        except Exception as exc:
+            self.logger.debug(f"Unable to extract source media URL for {media_id}: {exc}")
+
+        return None
     
     def generate_image(
         self, 
@@ -432,6 +481,12 @@ class GenerationAPI:
         response.raise_for_status()
         result = self._parse_response(response)
         
+        if result.get('video_objects'):
+            # Preserve media IDs so callers can reuse them for later extend-video flows
+            video_ids = [v['id'] for v in result['video_objects'] if 'id' in v]
+            if video_ids:
+                result['media_ids'] = video_ids
+
         # If fetch_urls is enabled and we have video IDs, fetch video URLs
         if fetch_urls and result.get('video_objects'):
             # Extract video IDs from video_objects
@@ -463,6 +518,122 @@ class GenerationAPI:
             else:
                 self.logger.warning("No video IDs found in generation response")
         
+        return result
+
+    def extend_video(
+        self,
+        media_id: str,
+        source_media_url: Optional[str] = None,
+        conversation_id: Optional[str] = None,
+        fetch_urls: bool = True,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Extend an existing generated video using source media ID.
+
+        Args:
+            media_id: Source media ID to extend
+            source_media_url: Optional source media URL (auto-resolved when omitted)
+            conversation_id: Optional existing conversation ID
+            fetch_urls: If True, fetch final extended video URLs
+            **kwargs: Additional request options
+
+        Returns:
+            Parsed response dictionary with media_ids and videos when available
+        """
+        if not media_id:
+            raise ValueError("media_id is required")
+
+        self.logger.info(f"Extending video for media_id: {media_id}")
+
+        # Resolve source URL when not provided
+        resolved_source_url = source_media_url
+        if not resolved_source_url:
+            media_data = self.fetch_media_by_id(media_id, conversation_id=conversation_id)
+            resolved_source_url = self._extract_source_media_url(media_data, media_id)
+
+        variables = self._build_base_variables(
+            prompt="Extend",
+            operation="EXTEND_VIDEO",
+            content_prefix="",
+            conversation_id=conversation_id or str(uuid.uuid4()),
+            is_new_conversation=False,
+            extend_source_media_id=media_id,
+            extend_source_media_url=resolved_source_url,
+            entry_point=kwargs.get('entry_point', "KADABRA__IMAGINE_UNIFIED_CANVAS"),
+            current_branch_path=kwargs.get('current_branch_path', "2"),
+            **kwargs
+        )
+
+        payload = {
+            "doc_id": self.EXTEND_VIDEO_DOC_ID,
+            "variables": variables,
+        }
+
+        headers = {
+            "Accept": "text/event-stream",
+            "Accept-Encoding": "gzip, deflate, br, zstd",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Content-Type": "application/json",
+            "Origin": "https://www.meta.ai",
+            "Priority": "u=1, i",
+            "Referer": f"https://www.meta.ai/create/{media_id}",
+            "Sec-Ch-Prefers-Color-Scheme": "dark",
+            "Sec-Ch-Ua": '"Not(A:Brand";v="8", "Chromium";v="144", "Microsoft Edge";v="144"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": '"Windows"',
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin",
+            "User-Agent": kwargs.get('user_agent', self._default_user_agent()),
+        }
+
+        timeout = (10, self.DEFAULT_TIMEOUT)
+        response = self.session.post(
+            self.ENDPOINT,
+            json=payload,
+            headers=headers,
+            timeout=timeout,
+        )
+
+        if self._check_response_for_auth_error(response):
+            raise Exception("Authentication failed - please refresh cookies using auto_refresh_cookies.py")
+
+        response.raise_for_status()
+        result = self._parse_response(response)
+
+        # Keep source context for callers
+        result['source_media_id'] = str(media_id)
+        result['source_media_url'] = resolved_source_url
+
+        media_ids = []
+        for video in result.get('video_objects', []):
+            vid = self._normalize_media_id(video.get('id'))
+            if vid and vid not in media_ids:
+                media_ids.append(vid)
+
+        if not media_ids:
+            extracted_ids = []
+            for mid in self._extract_media_ids_from_response(result):
+                normalized = self._normalize_media_id(mid)
+                if normalized and normalized not in extracted_ids:
+                    extracted_ids.append(normalized)
+            media_ids = extracted_ids
+
+        result['media_ids'] = media_ids
+
+        if fetch_urls and media_ids:
+            max_attempts = kwargs.pop('max_attempts', 24)
+            wait_seconds = kwargs.pop('wait_seconds', 5)
+            videos = self.fetch_video_urls_by_media_id(
+                video_ids=media_ids,
+                conversation_id=result.get('conversation_id') or conversation_id,
+                max_attempts=max_attempts,
+                wait_seconds=wait_seconds,
+            )
+            if videos:
+                result['videos'] = videos
+
         return result
     
     def _parse_response(self, response: requests.Response) -> Dict[str, Any]:
@@ -848,13 +1019,23 @@ class GenerationAPI:
         if not video_ids:
             return []
         
-        self.logger.info(f"Fetching video URLs for {len(video_ids)} videos (max {max_attempts} attempts)")
+        requested_ids = []
+        for raw_id in video_ids:
+            normalized = self._normalize_media_id(raw_id)
+            if normalized and normalized not in requested_ids:
+                requested_ids.append(normalized)
+
+        if not requested_ids:
+            self.logger.info("No resolved media IDs available yet (only pending placeholders)")
+            return []
+
+        self.logger.info(f"Fetching video URLs for {len(requested_ids)} videos (max {max_attempts} attempts)")
         
         videos = []  # Initialize to prevent unbound variable error
         for attempt in range(1, max_attempts + 1):
             try:
                 # Use the first video ID to fetch media (response includes all recent media)
-                data = self.fetch_media_by_id(video_ids[0], conversation_id=conversation_id)
+                data = self.fetch_media_by_id(requested_ids[0], conversation_id=conversation_id)
                 
                 if 'error' in data:
                     self.logger.warning(f"Attempt {attempt}/{max_attempts}: {data['error']}")
@@ -869,11 +1050,11 @@ class GenerationAPI:
                 seen_ids = set()
                 create_route_media = data.get('data', {}).get('createRouteMedia', {})
                 if create_route_media:
-                    route_id = create_route_media.get('id')
+                    route_id = self._normalize_media_id(create_route_media.get('id'))
                     route_url = create_route_media.get('url') or create_route_media.get('fallbackUrl')
                     source_media = create_route_media.get('sourceMedia')
                     source_image_url = source_media.get('url') if isinstance(source_media, dict) else None
-                    if route_id in video_ids and route_url and route_id not in seen_ids:
+                    if route_id in requested_ids and route_url and route_id not in seen_ids:
                         videos.append({
                             'id': route_id,
                             'url': route_url,
@@ -895,11 +1076,11 @@ class GenerationAPI:
                     node_videos = node.get('videos', [])
                     
                     for video in node_videos:
-                        video_id = video.get('id')
+                        video_id = self._normalize_media_id(video.get('id'))
                         video_url = video.get('url')
                         
                         # Check if this is one of our requested videos and has a URL
-                        if video_id in video_ids and video_url and video_id not in seen_ids:
+                        if video_id in requested_ids and video_url and video_id not in seen_ids:
                             source_media = video.get('sourceMedia')
                             source_image_url = source_media.get('url') if isinstance(source_media, dict) else None
                             videos.append({
@@ -918,7 +1099,7 @@ class GenerationAPI:
                 
                 # Check if we found all videos with URLs
                 videos_found = len(videos)
-                videos_requested = len(video_ids)
+                videos_requested = len(requested_ids)
                 
                 if videos_found == videos_requested:
                     self.logger.info(f"Found all {videos_found} videos with URLs on attempt {attempt}")
@@ -941,7 +1122,12 @@ class GenerationAPI:
                     adaptive_wait = 3 if attempt <= 10 else wait_seconds
                     time.sleep(adaptive_wait)
         
-        self.logger.warning(f"Video URLs not fully available after {max_attempts} attempts")
+        if videos:
+            self.logger.info(
+                f"Returning partial video URLs ({len(videos)}/{len(requested_ids)}) after {max_attempts} attempts"
+            )
+        else:
+            self.logger.warning(f"Video URLs not available after {max_attempts} attempts")
         return videos if 'videos' in locals() else []
 
     def fetch_image_urls_by_media_id(

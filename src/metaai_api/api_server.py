@@ -181,6 +181,15 @@ class VideoRequest(BaseModel):
     verbose: bool = False
 
 
+class VideoExtendRequest(BaseModel):
+    media_id: str
+    source_media_url: Optional[str] = None
+    conversation_id: Optional[str] = None
+    auto_poll: bool = True
+    max_poll_attempts: int = Field(15, ge=1, le=60)
+    poll_wait_seconds: int = Field(3, ge=1, le=30)
+
+
 class ImageUploadResponse(BaseModel):
     success: bool
     media_id: Optional[str] = None
@@ -424,6 +433,57 @@ async def video_job_status(job_id: str) -> Dict[str, Any]:
         return job.dict()
     except KeyError:
         raise HTTPException(status_code=404, detail="Job not found")
+
+
+@app.post("/video/extend")
+async def video_extend(body: VideoExtendRequest) -> Dict[str, Any]:
+    """Extend an existing video using source media_id."""
+    if _meta_ai_instance is None:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "success": False,
+                "error": "MetaAI instance not initialized",
+                "detail": "Server is initializing or rate-limited. Please try again in a moment.",
+            },
+        )
+
+    ai = _meta_ai_instance
+    try:
+        result = await asyncio.wait_for(
+            run_in_threadpool(
+                ai.extend_video,
+                media_id=body.media_id,
+                source_media_url=body.source_media_url,
+                conversation_id=body.conversation_id,
+                auto_poll=body.auto_poll,
+                max_poll_attempts=body.max_poll_attempts,
+                poll_wait_seconds=body.poll_wait_seconds,
+            ),
+            timeout=REQUEST_TIMEOUT,
+        )
+        return cast(Dict[str, Any], result)
+    except asyncio.TimeoutError:
+        logger.warning(f"Video extend timeout after {REQUEST_TIMEOUT}s for media_id: {body.media_id}")
+        return JSONResponse(
+            status_code=504,
+            content={
+                "success": False,
+                "error": "Video extend timeout",
+                "detail": f"Request exceeded {REQUEST_TIMEOUT} second timeout.",
+            },
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"Video extend error: {exc}")
+        await cache.refresh_after_error()
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "error": str(exc),
+                "detail": "Video extend failed",
+            },
+        )
 
 
 @app.post("/upload")

@@ -54,7 +54,7 @@ All in one SDK
 > **⚠️ Current Status Notice:**  
 > **Chat functionality** is currently unavailable due to authentication challenges.  
 > **Image & Video Generation** are fully functional using simple cookie-based authentication (only 3 cookies needed).  
-> See [SPEED_TEST_REPORT.md](SPEED_TEST_REPORT.md) for performance benchmarks.
+> See [docs/analysis/RELEASE_SUMMARY.md](docs/analysis/RELEASE_SUMMARY.md) for recent implementation notes.
 
 | Feature                      | Description                                     | Status         |
 | ---------------------------- | ----------------------------------------------- | -------------- |
@@ -150,16 +150,21 @@ if result["success"]:
     print(f"Generated {len(result['video_urls'])} videos:")
     for url in result["video_urls"]:
         print(url)
+
+    # IDs for extension workflows
+    print("Media IDs:", result.get("media_ids", []))
 ```
 
 **Output:**
 
 ```
 Generated 4 videos:
-https://www.meta.ai/create/956278367576451
-https://www.meta.ai/create/956278364243118
-https://www.meta.ai/create/956278370909784
-https://www.meta.ai/create/956278374243117
+https://scontent.xx.fbcdn.net/o1/v/t6/f2/.../video1.mp4?...
+https://scontent.xx.fbcdn.net/o1/v/t6/f2/.../video2.mp4?...
+https://scontent.xx.fbcdn.net/o1/v/t6/f2/.../video3.mp4?...
+https://scontent.xx.fbcdn.net/o1/v/t6/f2/.../video4.mp4?...
+
+Media IDs: ['956278367576451', '956278364243118', '956278370909784', '956278374243117']
 ```
 
 **Quick Return (No Polling):**
@@ -359,6 +364,7 @@ Server starts instantly (no token pre-fetching delays).
 | `/upload`              | POST   | Upload images for generation           | ✅ Working     |
 | `/image`               | POST   | Generate images from text              | ✅ Working     |
 | `/video`               | POST   | Generate video (blocks until complete) | ✅ Working     |
+| `/video/extend`        | POST   | Extend video from media ID             | ✅ Working     |
 | `/video/async`         | POST   | Start async video generation           | ✅ Working     |
 | `/video/jobs/{job_id}` | GET    | Poll async job status                  | ✅ Working     |
 | `/chat`                | POST   | Send chat messages                     | ⚠️ Unavailable |
@@ -390,8 +396,17 @@ video = requests.post(f"{BASE_URL}/video", json={
 }, timeout=400)
 result = video.json()
 if result["success"]:
-    for url in result["video_urls"]:
-        print(url)
+    print("Video URLs:", result.get("video_urls", []))
+    print("Media IDs:", result.get("media_ids", []))
+
+# Extend video from media ID
+extended = requests.post(f"{BASE_URL}/video/extend", json={
+    "media_id": result["media_ids"][0]
+}, timeout=400)
+extend_result = extended.json()
+if extend_result["success"]:
+    print("Extended URLs:", extend_result.get("video_urls", []))
+    print("Extended Media IDs:", extend_result.get("media_ids", []))
 
 # Async video generation
 job = requests.post(f"{BASE_URL}/video/async", json={
@@ -601,7 +616,7 @@ if result["success"]:
 
 ````
 
-📖 **Full Video Guide:** See [VIDEO_GENERATION_README.md](https://github.com/mir-ashiq/metaai-api/blob/main/VIDEO_GENERATION_README.md) for complete documentation!
+📖 **Full Video Guide:** See [GENERATION_API.md](GENERATION_API.md) for complete documentation.
 
 ---
 
@@ -667,7 +682,7 @@ if result["success"]:
 🎬 Video: https://scontent.fsxr1-2.fna.fbcdn.net/o1/v/t6/f2/m421/video.mp4
 ```
 
-📖 **Full Image Upload Guide:** See [IMAGE_UPLOAD_README.md](IMAGE_UPLOAD_README.md) for complete documentation!
+📖 **Full Image Upload Guide:** See [examples/image_upload_example.py](examples/image_upload_example.py) for a practical upload workflow.
 
 ---
 
@@ -763,16 +778,14 @@ python examples/video_generation.py
 
 ### 📚 Complete Guides
 
-| Document                                                    | Description                             |
-| ----------------------------------------------------------- | --------------------------------------- |
-| 📘 **[Image Upload Guide](IMAGE_UPLOAD_README.md)**         | Complete image upload documentation     |
-| 📘 **[Video Generation Guide](VIDEO_GENERATION_README.md)** | Complete video generation documentation |
-| 📙 **[Quick Reference](QUICK_REFERENCE.md)**                | Fast lookup for common tasks            |
-| 📙 **[Quick Usage](QUICK_USAGE.md)**                        | Image upload quick reference            |
-| 📗 **[Architecture Guide](ARCHITECTURE.md)**                | Technical architecture details          |
-| 📕 **[Contributing Guide](CONTRIBUTING.md)**                | How to contribute to the project        |
-| 📔 **[Changelog](CHANGELOG.md)**                            | Version history and updates             |
-| 📓 **[Security Policy](SECURITY.md)**                       | Security best practices                 |
+| Document                                           | Description                      |
+| -------------------------------------------------- | -------------------------------- |
+| 📘 **[Quick Start](QUICK_START.md)**               | SDK/API setup and first requests |
+| 📘 **[Generation API](GENERATION_API.md)**         | Image/video generation details   |
+| 📙 **[Changes & Cookies](CHANGES_AND_COOKIES.md)** | Cookie setup and known caveats   |
+| 📕 **[Contributing Guide](CONTRIBUTING.md)**       | How to contribute to the project |
+| 📔 **[Changelog](CHANGELOG.md)**                   | Version history and updates      |
+| 📓 **[Security Policy](SECURITY.md)**              | Security best practices          |
 
 ### 🔧 API Reference
 
@@ -796,8 +809,11 @@ class MetaAI:
   - Returns: `dict` with `message`, `sources`, and `media`
 
 - **`generate_video(prompt, wait_before_poll=10, max_attempts=30, wait_seconds=5, verbose=True)`**
-  - Generate a video from text
-  - Returns: `dict` with `success`, `video_urls`, `conversation_id`, `prompt`, `timestamp`
+  - Generate a video from text - Returns: `dict` with `success`, `video_urls` (actual media URLs), `media_ids`, `conversation_id`, `prompt`, `timestamp`
+
+- **`extend_video(media_id, source_media_url=None, conversation_id=None, wait_before_poll=10, max_attempts=30, wait_seconds=5, verbose=True)`**
+  - Extend a previously generated video from a media ID
+    - Returns: `dict` with `success`, `video_urls` (extended playable URLs), `media_ids`, `conversation_id`, `source_media_id`, `timestamp`
 
 #### VideoGenerator Class
 
@@ -954,14 +970,13 @@ meta-ai-python/
 │   └── README.md
 │
 ├── 📄 README.md               # This file
-├── 📄 VIDEO_GENERATION_README.md
-├── 📄 QUICK_REFERENCE.md
-├── 📄 ARCHITECTURE.md
+├── 📄 QUICK_START.md
+├── 📄 GENERATION_API.md
+├── 📄 CHANGES_AND_COOKIES.md
 ├── 📄 CONTRIBUTING.md
 ├── 📄 CHANGELOG.md
 ├── 📄 SECURITY.md
 ├── 📄 LICENSE                 # MIT License
-├── 📄 setup.py                # Package setup
 ├── 📄 pyproject.toml          # Project metadata
 └── 📄 requirements.txt        # Dependencies
 ```
@@ -1023,7 +1038,7 @@ This project is an **independent implementation** and is **not officially affili
 | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | 📦 **PyPI Package**       | [pypi.org/project/metaai_api](https://pypi.org/project/metaai_api/)                                                           |
 | 🐙 **GitHub Repository**  | [github.com/mir-ashiq/meta-ai-python](https://github.com/mir-ashiq/metaai-api)                                                |
-| 📖 **Full Documentation** | [Video Guide](VIDEO_GENERATION_README.md) • [Quick Ref](QUICK_REFERENCE.md)                                                   |
+| 📖 **Full Documentation** | [Quick Start](QUICK_START.md) • [Generation API](GENERATION_API.md)                                                           |
 | 💬 **Get Help**           | [Issues](https://github.com/mir-ashiq/metaai-api/issues) • [Discussions](https://github.com/mir-ashiq/metaai-api/discussions) |
 
 ---

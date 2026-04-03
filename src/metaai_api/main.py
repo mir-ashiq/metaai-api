@@ -1118,7 +1118,8 @@ class MetaAI:
             Dictionary with:
             - success: True if request submitted successfully
             - conversation_id: ID for tracking the video generation
-            - video_urls: List of Meta AI URLs (https://www.meta.ai/create/{id})
+            - media_ids: Generated media IDs for later extend-video flows
+            - video_urls: List of actual video delivery URLs when available
             - processing: True if video is still being generated/polled
             
         Example:
@@ -1149,33 +1150,82 @@ class MetaAI:
             # Extract conversation ID
             conversation_id = response.get('conversation_id')
             
-            # Extract video IDs and construct Meta AI URLs
+            # Extract video IDs and construct Meta AI tracking URLs
             video_objects = response.get('video_objects', [])
-            video_urls = []
+            media_ids = list(response.get('media_ids', []) or [])
+            video_page_urls = []
+
+            if not media_ids:
+                for vid_obj in video_objects:
+                    vid_id = vid_obj.get('id')
+                    if vid_id and vid_id not in media_ids:
+                        media_ids.append(vid_id)
             
             for vid_obj in video_objects:
                 vid_id = vid_obj.get('id')
                 if vid_id:
                     # Construct Meta AI create page URL
                     meta_ai_url = f"https://www.meta.ai/create/{vid_id}"
-                    video_urls.append(meta_ai_url)
+                    video_page_urls.append(meta_ai_url)
+
+            # If no media IDs were attached to the initial response, attempt to
+            # recover them from the tracking URLs returned above.
+            if not media_ids and video_page_urls:
+                for page_url in video_page_urls:
+                    vid_id = page_url.rsplit('/', 1)[-1].split('?', 1)[0]
+                    if vid_id and vid_id not in media_ids:
+                        media_ids.append(vid_id)
+
+            actual_video_objects = []
+            actual_video_urls = []
+            if media_ids and conversation_id:
+                actual_video_objects = self.generation_api.fetch_video_urls_by_media_id(
+                    video_ids=media_ids,
+                    conversation_id=conversation_id,
+                    max_attempts=max_poll_attempts,
+                    wait_seconds=poll_wait_seconds,
+                )
+                actual_video_urls = [
+                    video.get('url')
+                    for video in actual_video_objects
+                    if isinstance(video, dict) and video.get('url')
+                ]
             
             # Auto-poll for video IDs if enabled
-            if auto_poll and conversation_id and not video_urls:
+            if auto_poll and conversation_id and not media_ids:
                 logging.info(f"Auto-polling for video IDs (max {max_poll_attempts} attempts, {poll_wait_seconds}s intervals)...")
-                video_urls = self.generation_api.poll_for_video_ids(
+                video_page_urls = self.generation_api.poll_for_video_ids(
                     conversation_id=conversation_id,
                     max_attempts=max_poll_attempts,
                     wait_seconds=poll_wait_seconds
                 )
+                for page_url in video_page_urls:
+                    vid_id = page_url.rsplit('/', 1)[-1].split('?', 1)[0]
+                    if vid_id and vid_id not in media_ids:
+                        media_ids.append(vid_id)
+
+                if media_ids and not actual_video_urls:
+                    actual_video_objects = self.generation_api.fetch_video_urls_by_media_id(
+                        video_ids=media_ids,
+                        conversation_id=conversation_id,
+                        max_attempts=max_poll_attempts,
+                        wait_seconds=poll_wait_seconds,
+                    )
+                    actual_video_urls = [
+                        video.get('url')
+                        for video in actual_video_objects
+                        if isinstance(video, dict) and video.get('url')
+                    ]
             
-            has_urls = len(video_urls) > 0
+            has_urls = len(actual_video_urls) > 0
             
             return {
                 "success": True,  # Request submitted successfully
                 "prompt": prompt,
                 "conversation_id": conversation_id,
-                "video_urls": video_urls,
+                "media_ids": media_ids,
+                "video_urls": actual_video_urls,
+                "video_objects": actual_video_objects or video_objects,
                 "processing": not has_urls,  # True if video IDs not yet available
                 "response": response
             }
@@ -1252,6 +1302,87 @@ class MetaAI:
             wait_seconds=wait_seconds,
             verbose=verbose
         )
+
+    def extend_video(
+        self,
+        media_id: str,
+        source_media_url: Optional[str] = None,
+        conversation_id: Optional[str] = None,
+        auto_poll: bool = True,
+        max_poll_attempts: int = 15,
+        poll_wait_seconds: int = 3,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Extend an existing video using a source media ID.
+
+        Args:
+            media_id: Source media ID to extend
+            source_media_url: Optional source media URL (auto-resolved when omitted)
+            conversation_id: Optional existing conversation ID
+            auto_poll: Whether to poll for actual extended video URLs
+            max_poll_attempts: Maximum polling attempts
+            poll_wait_seconds: Seconds between polling attempts
+            **kwargs: Additional internal request options
+
+        Returns:
+            Dictionary containing success status, conversation_id, media_ids, and video_urls
+        """
+        if not media_id or not str(media_id).strip():
+            return {
+                "success": False,
+                "error": "media_id cannot be empty",
+                "media_id": media_id,
+            }
+
+        try:
+            response = self.generation_api.extend_video(
+                media_id=str(media_id),
+                source_media_url=source_media_url,
+                conversation_id=conversation_id,
+                fetch_urls=False,
+                **kwargs,
+            )
+
+            conv_id = response.get('conversation_id') or conversation_id
+            media_ids = [
+                str(mid)
+                for mid in (response.get('media_ids') or [])
+                if str(mid).strip() and not str(mid).startswith('pending:')
+            ]
+
+            video_urls: List[str] = []
+            if auto_poll and media_ids and conv_id:
+                video_objects = self.generation_api.fetch_video_urls_by_media_id(
+                    video_ids=media_ids,
+                    conversation_id=conv_id,
+                    max_attempts=max_poll_attempts,
+                    wait_seconds=poll_wait_seconds,
+                )
+                video_urls = [
+                    video.get('url')
+                    for video in video_objects
+                    if isinstance(video, dict) and video.get('url')
+                ]
+
+            has_urls = len(video_urls) > 0
+
+            return {
+                "success": True,
+                "source_media_id": str(media_id),
+                "conversation_id": conv_id,
+                "media_ids": media_ids,
+                "video_urls": video_urls,
+                "processing": not has_urls,
+                "response": response,
+            }
+        except Exception as e:
+            logging.error(f"Error extending video: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "source_media_id": str(media_id),
+            }
 
     def upload_image(self, file_path: str) -> Dict[str, Any]:
         """

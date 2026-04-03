@@ -48,6 +48,7 @@ Thumbs.db
 # Logs
 # =========================
 *.log
+logs/
 
 # =========================
 # TEMP / DEBUG FILES
@@ -78,12 +79,25 @@ test_current_flow.py
 test_simple_approach.py
 test_render_fix.py
 test_success.py
+working-main.py
+test.py
+test-video.py
+extend-feature-*.txt
+extend-feature-*.json
+*.har
+*.tmp
 
 # =========================
 # Node modules
 # =========================
 node_modules/
 package-lock.json
+cloudflare-worker
+cloudflare-worker/node_modules/
+cloudflare-worker/.wrangler/
+cloudflare-worker/.dev.vars
+cloudflare-worker/.env
+cloudflare-worker/.env.local
 
 # =========================
 # Temporary documentation
@@ -108,8 +122,19 @@ DEPLOYMENT_FIX.md
 GITHUB_ISSUE_RESPONSE.md
 QUICK_FIX_GUIDE.md
 
-# Don't include cloudflare-worker files
-cloudflare-worker
+# Python tooling caches and coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Local notebooks and runtime state
+.ipynb_checkpoints/
+
+# Don't include ad-hoc local API/html probes
 # network.json
 # network-*.json
 test_api.html

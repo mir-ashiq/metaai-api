@@ -46,8 +46,14 @@ result = ai.generate_video_new(
 )
 
 if result["success"]:
-    for url in result["video_urls"]:
-        print(url)
+   print("Actual video URLs:", result.get("video_urls", []))
+   print("Media IDs:", result.get("media_ids", []))
+
+   # Extend first generated video
+   if result.get("media_ids"):
+      extended = ai.extend_video(result["media_ids"][0])
+      if extended.get("success"):
+         print("Extended URLs:", extended.get("video_urls", []))
 ```
 
 ### 3. Use the API Server
@@ -177,6 +183,10 @@ print(f"Image URL: {urls[0]}")
 video_result = api.generation_api.generate_video(
     "A rocket launching to space"
 )
+
+if video_result.get("success"):
+   print("Video URLs:", video_result.get("video_urls", []))
+   print("Media IDs:", video_result.get("media_ids", []))
 
 # Wait for video to be ready
 video_result_final = api.generation_api.poll_media_completion(

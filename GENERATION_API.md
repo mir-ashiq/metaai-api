@@ -101,7 +101,15 @@ if result['success']:
     print(f"Generated {len(result['video_urls'])} videos")
     for url in result['video_urls']:
         print(f"Video URL: {url}")
-    # Example: https://www.meta.ai/create/956278367576451
+  # Example: https://scontent-xxx.fbcdn.net/.../video.mp4?...
+  print("Media IDs:", result.get('media_ids', []))
+
+# Extend a generated video using one of the media IDs
+if result.get('media_ids'):
+  extended = ai.extend_video(result['media_ids'][0])
+  if extended.get('success'):
+    print("Extended URLs:", extended.get('video_urls', []))
+    print("Extended Media IDs:", extended.get('media_ids', []))
 
 # For quick return without waiting (disable auto-polling)
 result = ai.generate_video_new(
@@ -179,6 +187,11 @@ The API returns responses in multipart/mixed format or JSON. The implementation 
 - Parses multipart responses
 - Extracts media URLs (images/videos)
 - Returns structured data
+
+For video generation (`generate_video_new`), the structured response includes:
+
+- `video_urls`: Actual playable media URLs (typically `.mp4`)
+- `media_ids`: Media IDs for follow-up workflows such as extending videos
 
 ## Notes
 
