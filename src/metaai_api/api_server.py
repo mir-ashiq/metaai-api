@@ -61,9 +61,14 @@ class TokenCache:
             "abra_csrf": os.getenv("META_AI_ABRA_CSRF", ""),
             "rd_challenge": os.getenv("META_AI_RD_CHALLENGE", ""),
         }
-        missing = [k for k in ("datr", "abra_sess") if not seed.get(k)]
+        # Only datr is truly required. abra_sess is optional (some regions like Indonesia don't have it)
+        missing = [k for k in ("datr",) if not seed.get(k)]
         if missing:
             raise RuntimeError(f"Missing required seed cookies: {', '.join(missing)}")
+        
+        # Log if abra_sess is missing (it's optional but recommended)
+        if not seed.get("abra_sess"):
+            logging.warning("abra_sess cookie not found - some features may have reduced functionality. This is common in certain regions like Indonesia.")
         async with self._lock:
             self._cookies = {k: v for k, v in seed.items() if v}
             self._last_refresh = 0.0

@@ -36,17 +36,17 @@ pip install -e .
    - Login if needed
    - Open Developer Tools (F12)
    - Go to Application/Storage > Cookies > https://meta.ai
-   - Copy the values for: `datr`, `abra_sess`, `ecto_1_sess`
+   - Copy the values for: `datr`, `ecto_1_sess` (required), and `abra_sess` if available (optional)
 
 3. Add cookies to `.env` file:
 
    ```env
    META_AI_DATR=your_datr_value
-   META_AI_ABRA_SESS=your_abra_sess_value
    META_AI_ECTO_1_SESS=your_ecto_1_sess_value
+   META_AI_ABRA_SESS=your_abra_sess_value  # Optional - may not be available in all regions (e.g., Indonesia)
    ```
 
-   > **Note**: Only these 3 cookies are required for image/video generation. Other cookies like `lsd`, `fb_dtsg` are NOT needed.
+   > **Note**: Only `datr` and `ecto_1_sess` are required for image/video generation. `abra_sess` is optional and improves compatibility in some cases. Other cookies like `lsd`, `fb_dtsg` are NOT needed.
 
 For chat usage, the SDK also needs a Meta AI OAuth access token. The SDK can load it from `META_AI_ACCESS_TOKEN` or extract it from the Meta AI page when cookies are valid.
 
@@ -60,10 +60,17 @@ from metaai_api import MetaAI
 # Initialize with cookie-based authentication
 ai = MetaAI()
 
-# Or with explicit cookies
+# Or with explicit cookies (minimum required)
 cookies = {
     'datr': 'your_datr_value',
-    'abra_sess': 'your_abra_sess_value',
+    'ecto_1_sess': 'your_ecto_1_sess_value'
+}
+ai = MetaAI(cookies=cookies)
+
+# Or with optional abra_sess if available:
+cookies = {
+    'datr': 'your_datr_value',
+    'abra_sess': 'your_abra_sess_value',  # Optional
     'ecto_1_sess': 'your_ecto_1_sess_value'
 }
 ai = MetaAI(cookies=cookies)

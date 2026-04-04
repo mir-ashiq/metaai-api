@@ -6,7 +6,7 @@
 >
 > **Current simplified requirements (as of latest version):**
 >
-> - Only **3 cookies** needed: `datr`, `abra_sess`, `ecto_1_sess`
+> - Only **2 minimum cookies** needed: `datr`, `ecto_1_sess`. Optional: `abra_sess` (some regions may not have it)
 > - No tokens (lsd/fb_dtsg) required
 > - No dpr, wd, ps_l, ps_n needed
 >
@@ -122,20 +122,25 @@ META_AI_WD=759x732
 
 ## 🍪 Cookie Requirements
 
-### ✅ **10 Required Cookies**
+### ✅ **Minimum Required Cookies**
 
-| #   | Cookie Name      | Example Value                                   | Source         | Critical?  |
-| --- | ---------------- | ----------------------------------------------- | -------------- | ---------- |
-| 1   | **ecto_1_sess**  | `76fd2c4f-691c-4bfa-9c67-813afdd60262.v1%3A...` | curl.json L224 | ⭐ **YES** |
-| 2   | **ps_l**         | `1`                                             | curl.json      | ⭐ **YES** |
-| 3   | **ps_n**         | `1`                                             | curl.json      | ⭐ **YES** |
-| 4   | **datr**         | `-5pnaePoirB_Y94nHinFXSBj`                      | curl.json      | ✅ Yes     |
-| 5   | **abra_sess**    | `FrKF8dSY%2FfECFloYDm9yLVZKdW5VVVJVak13F...`    | curl.json      | ✅ Yes     |
-| 6   | **dpr**          | `1.25`                                          | curl.json      | ✅ Yes     |
-| 7   | **wd**           | `759x732`                                       | curl.json      | ✅ Yes     |
-| 8   | **\_js_datr**    | `4ciKaQmCIB0wlG3ymlljb5Tw`                      | curl.json L375 | ✅ Yes     |
-| 9   | **abra_csrf**    | Your value                                      | curl.json      | ✅ Yes     |
-| 10  | **rd_challenge** | `Q_6hBQOr5mQFfxRtS-a2odnir2-pgv...`             | curl.json      | ✅ Yes     |
+| Cookie Name     | Example Value                                   | Source         | Notes                                         |
+| --------------- | ----------------------------------------------- | -------------- | --------------------------------------------- |
+| **datr**        | `-5pnaePoirB_Y94nHinFXSBj`                      | curl.json      | Device identifier - always required           |
+| **ecto_1_sess** | `76fd2c4f-691c-4bfa-9c67-813afdd60262.v1%3A...` | curl.json L224 | Session token - most important for generation |
+
+### ✅ **Optional but Recommended**
+
+| Cookie Name   | Example Value                                | Source                              | Notes                                            |
+| ------------- | -------------------------------------------- | ----------------------------------- | ------------------------------------------------ | ------ |
+| **abra_sess** | `FrKF8dSY%2FfECFloYDm9yLVZKdW5VVVJVak13F...` | curl.json                           | Some regions (e.g., Indonesia) may not have this |
+| **ps_l**      | `1`                                          | curl.json                           | Page state cookie                                |
+| **ps_n**      | `1`                                          | curl.json                           | Page state cookie                                |
+| **dpr**       | `1.25`                                       | curl.json                           | Device pixel ratio                               |
+| **wd**        | `759x732`                                    | curl.json                           | Window dimensions                                |
+| 8             | **\_js_datr**                                | `4ciKaQmCIB0wlG3ymlljb5Tw`          | curl.json L375                                   | ✅ Yes |
+| 9             | **abra_csrf**                                | Your value                          | curl.json                                        | ✅ Yes |
+| 10            | **rd_challenge**                             | `Q_6hBQOr5mQFfxRtS-a2odnir2-pgv...` | curl.json                                        | ✅ Yes |
 
 ---
 
@@ -272,7 +277,9 @@ Expected output: `Cookies: 10`
 ## 📌 Summary
 
 **Total Changes:** 5 modifications across 2 files  
-**Critical Cookie:** ecto_1_sess from curl.json line 224  
-**Minimum Required:** 10 cookies  
+**Critical Cookies:** datr + ecto_1_sess (minimum required)  
+**Minimum Required:** 2 cookies (datr + ecto_1_sess)  
+**Optional but Recommended:** abra_sess, ps_l, ps_n, dpr, wd  
+**Regional Support:** Works for Indonesian users without abra_sess  
 **New Feature:** SSE streaming response parser  
 **Status:** ✅ Image generation working, 🎬 Video generation testing now

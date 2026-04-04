@@ -53,7 +53,7 @@ All in one SDK
 
 > **✅ Current Status Notice:**  
 > **Chat, Image, and Video functionality** are now working with cookie-based authentication plus the Meta AI OAuth token used by the SDK and API server.  
-> **Image & Video Generation** remain fully functional using simple cookie-based authentication (only 3 cookies needed).  
+> **Image & Video Generation** remain fully functional using simple cookie-based authentication (only 2 required cookies).  
 > See [docs/analysis/RELEASE_SUMMARY.md](docs/analysis/RELEASE_SUMMARY.md) for recent implementation notes.
 
 | Feature                      | Description                                     | Status     |
@@ -215,15 +215,27 @@ This calculation uses the compound interest formula: A = P(1 + r/n)^(nt)
 
 ## � Authentication Options
 
-The SDK uses simple **cookie-based authentication** with just 3 required cookies:
+The SDK uses simple **cookie-based authentication**. Minimum required:
 
 ```python
 from metaai_api import MetaAI
 
-# Only 3 cookies required
+# Minimum cookies required
 cookies = {
     "datr": "your_datr_value",
-    "abra_sess": "your_abra_sess_value",
+    "ecto_1_sess": "your_ecto_1_sess_value"  # Most important for generation
+}
+
+ai = MetaAI(cookies=cookies)
+```
+
+**Optional cookies** (improves compatibility in some regions):
+
+```python
+# More complete cookie set (recommended)
+cookies = {
+    "datr": "your_datr_value",
+    "abra_sess": "your_abra_sess_value",  # Optional - some regions (e.g., Indonesia) may not have this
     "ecto_1_sess": "your_ecto_1_sess_value"  # Most important for generation
 }
 
@@ -240,7 +252,7 @@ from metaai_api import MetaAI
 ai = MetaAI()  # Automatically loads from META_AI_* environment variables
 ```
 
-> **💡 Note:** Token fetching (lsd/fb_dtsg) has been removed. Generation APIs work perfectly with just these 3 cookies!
+> **💡 Note:** Token fetching (lsd/fb_dtsg) has been removed. Generation APIs work perfectly with just datr + ecto_1_sess cookies!
 
 ---
 
@@ -456,7 +468,7 @@ Create AI-generated videos from text descriptions!
    - `abra_sess`
    - `ecto_1_sess` (most important for generation)
 
-> **💡 Note:** Only these 3 cookies are needed. No tokens (lsd/fb_dtsg) required!
+> **💡 Note:** Only datr and ecto_1_sess cookies are needed. No tokens (lsd/fb_dtsg) required!
 
 ### 🔄 Automatic Cookie Refresh
 

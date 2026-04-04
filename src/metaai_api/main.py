@@ -114,7 +114,7 @@ class MetaAI:
         
         Environment variables expected:
         - META_AI_DATR: Required - Device identifier cookie
-        - META_AI_ABRA_SESS: Required - Session cookie
+        - META_AI_ABRA_SESS: Optional - Session cookie (some regions like Indonesia may not have this)
         - META_AI_ECTO_1_SESS: Critical - Session state token (MOST IMPORTANT)
         - META_AI_ACCESS_TOKEN: Optional - OAuth access token for image upload (ecto1:... format)
                                If not provided, will be extracted from meta.ai page (may hit rate limits)
@@ -134,15 +134,18 @@ class MetaAI:
             "abra_sess": os.getenv("META_AI_ABRA_SESS"),
         }
         
-        # Check if required cookies are present
-        if not (required_cookies["datr"] and required_cookies["abra_sess"]):
+        # Check if required cookies are present (only datr is truly required)
+        if not required_cookies["datr"]:
             return None
         
         # Build complete cookie dict with required cookies
         cookies = {
             "datr": required_cookies["datr"],
-            "abra_sess": required_cookies["abra_sess"],
         }
+        
+        # Add abra_sess if available (optional, some regions don't have it)
+        if required_cookies["abra_sess"]:
+            cookies["abra_sess"] = required_cookies["abra_sess"]
         
         # Add critical session cookie (MOST IMPORTANT)
         ecto_session = os.getenv("META_AI_ECTO_1_SESS")

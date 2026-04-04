@@ -94,10 +94,12 @@ curl -X POST http://127.0.0.1:8000/chat \
 You need valid Meta AI cookies in your `.env` file:
 
 ```bash
-# From https://meta.ai (only 3 cookies required!)
+# From https://meta.ai (minimum requirements)
 META_AI_DATR=your_datr_cookie
-META_AI_ABRA_SESS=your_abra_sess_cookie
 META_AI_ECTO_1_SESS=your_ecto_1_sess_cookie  # Most important for generation
+
+# Optional - improves compatibility (some regions may not have abra_sess)
+META_AI_ABRA_SESS=your_abra_sess_cookie
 ```
 
 ### How to Get Cookies
