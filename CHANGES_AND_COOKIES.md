@@ -105,7 +105,7 @@ else:
 # CRITICAL - Session token from curl.json line 224
 META_AI_ECTO_1_SESS=76fd2c4f-691c-4bfa-9c67-813afdd60262.v1%3A...
 
-# REQUIRED - Portal settings
+# OPTIONAL - Portal settings (may improve compatibility)
 META_AI_PS_L=1
 META_AI_PS_N=1
 
@@ -131,16 +131,16 @@ META_AI_WD=759x732
 
 ### ✅ **Optional but Recommended**
 
-| Cookie Name   | Example Value                                | Source                              | Notes                                            |
-| ------------- | -------------------------------------------- | ----------------------------------- | ------------------------------------------------ | ------ |
-| **abra_sess** | `FrKF8dSY%2FfECFloYDm9yLVZKdW5VVVJVak13F...` | curl.json                           | Some regions (e.g., Indonesia) may not have this |
-| **ps_l**      | `1`                                          | curl.json                           | Page state cookie                                |
-| **ps_n**      | `1`                                          | curl.json                           | Page state cookie                                |
-| **dpr**       | `1.25`                                       | curl.json                           | Device pixel ratio                               |
-| **wd**        | `759x732`                                    | curl.json                           | Window dimensions                                |
-| 8             | **\_js_datr**                                | `4ciKaQmCIB0wlG3ymlljb5Tw`          | curl.json L375                                   | ✅ Yes |
-| 9             | **abra_csrf**                                | Your value                          | curl.json                                        | ✅ Yes |
-| 10            | **rd_challenge**                             | `Q_6hBQOr5mQFfxRtS-a2odnir2-pgv...` | curl.json                                        | ✅ Yes |
+| Cookie Name      | Example Value                                | Source         | Notes                                            |
+| ---------------- | -------------------------------------------- | -------------- | ------------------------------------------------ |
+| **abra_sess**    | `FrKF8dSY%2FfECFloYDm9yLVZKdW5VVVJVak13F...` | curl.json      | Some regions (e.g., Indonesia) may not have this |
+| **ps_l**         | `1`                                          | curl.json      | Page state cookie                                |
+| **ps_n**         | `1`                                          | curl.json      | Page state cookie                                |
+| **dpr**          | `1.25`                                       | curl.json      | Device pixel ratio                               |
+| **wd**           | `759x732`                                    | curl.json      | Window dimensions                                |
+| **\_js_datr**    | `4ciKaQmCIB0wlG3ymlljb5Tw`                   | curl.json L375 | JavaScript datr value                            |
+| **abra_csrf**    | `your_abra_csrf_value`                       | curl.json      | CSRF cookie                                      |
+| **rd_challenge** | `Q_6hBQOr5mQFfxRtS-a2odnir2-pgv...`          | curl.json      | Challenge / anti-bot cookie                      |
 
 ---
 
@@ -154,11 +154,11 @@ META_AI_WD=759x732
 - **Expires:** Yes (requires periodic refresh from browser)
 - **Impact:** Without this, you get 403 Forbidden or "Access token required" errors
 
-### 2. **ps_l** & **ps_n** (REQUIRED FOR GENERATION) ⭐
+### 2. **ps_l** & **ps_n** (OPTIONAL)
 
 - **Purpose:** Portal/service level flags
 - **Values:** Both set to `1`
-- **Impact:** Without these, image/video generation fails silently
+- **Impact:** Usually optional; can improve reliability on some accounts
 
 ### 3. **datr** (Device Tracking)
 
@@ -171,7 +171,7 @@ META_AI_WD=759x732
 
 - **Purpose:** Additional session layer for Meta AI (Abra project)
 - **Format:** URL-encoded encrypted data
-- **Impact:** Required for API access
+- **Impact:** Optional; some regions (including Indonesia) may not provide it
 
 ### 5. **dpr** (Device Pixel Ratio)
 
@@ -241,12 +241,10 @@ ecto_1_sess=76fd2c4f-691c-4bfa-9c67-813afdd60262.v1%3ATSDWCviJdyy4Ql491qg...
 
 Before running tests, verify:
 
-- [ ] `.env` file exists with all 10 cookies
-- [ ] `ecto_1_sess` is from curl.json **line 224** (not line 82)
-- [ ] `ps_l=1` and `ps_n=1` are set
-- [ ] `_js_datr` matches value from curl.json line 375
-- [ ] All cookies are URL-encoded properly (no spaces)
-- [ ] DOC_ID in generation.py is `83c79c30d655e0ae6f20af0e129101e2`
+- [ ] `.env` file includes required cookies: `META_AI_DATR` and `META_AI_ECTO_1_SESS`
+- [ ] `ecto_1_sess` is fresh from your current browser session
+- [ ] Optional cookies are URL-encoded properly (no spaces)
+- [ ] DOC_ID in generation.py matches the current implementation
 
 ---
 
@@ -258,7 +256,7 @@ Verify cookies are loaded:
 python -c "from metaai_api import MetaAI; ai = MetaAI(); print(f'Cookies: {len(ai.session.cookies)}')"
 ```
 
-Expected output: `Cookies: 10`
+Expected output: `Cookies: 2` or higher (depending on optional cookies)
 
 ---
 
@@ -268,7 +266,7 @@ Expected output: `Cookies: 10`
 | ----------------------- | ------------------------ | -------------------------------------- |
 | 403 Forbidden           | Bad ecto_1_sess          | Use line 224 from curl.json            |
 | "Access token required" | Wrong ecto_1_sess timing | Use later timestamp from curl.json     |
-| 400 Bad Request         | Missing ps_l/ps_n        | Add to .env                            |
+| 400 Bad Request         | Missing datr/ecto_1_sess | Add required cookies to `.env`         |
 | Empty response          | Wrong DOC_ID             | Use `83c79c30d655e0ae6f20af0e129101e2` |
 | JSON parse error        | Wrong Accept header      | Use `text/event-stream`                |
 

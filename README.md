@@ -4,7 +4,7 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.7%2B-blue?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)](LICENSE)
-[![PyPI](https://img.shields.io/badge/PyPI-v2.0.0-orange?style=for-the-badge&logo=pypi&logoColor=white)](https://pypi.org/project/metaai-api/)
+[![PyPI](https://img.shields.io/badge/PyPI-v2.0.0-orange?style=for-the-badge&logo=pypi&logoColor=white)](https://pypi.org/project/metaai-sdk/)
 [![GitHub](https://img.shields.io/badge/GitHub-mir--ashiq-black?style=for-the-badge&logo=github)](https://github.com/mir-ashiq/metaai-api)
 
 **Unleash the Power of Meta AI with Python** 🚀
@@ -54,7 +54,7 @@ All in one SDK
 > **✅ Current Status Notice:**  
 > **Chat, Image, and Video functionality** are now working with cookie-based authentication plus the Meta AI OAuth token used by the SDK and API server.  
 > **Image & Video Generation** remain fully functional using simple cookie-based authentication (only 2 required cookies).  
-> See [docs/analysis/RELEASE_SUMMARY.md](docs/analysis/RELEASE_SUMMARY.md) for recent implementation notes.
+> See [CHANGELOG.md](CHANGELOG.md) for release history and implementation updates.
 
 | Feature                      | Description                                     | Status     |
 | ---------------------------- | ----------------------------------------------- | ---------- |
@@ -213,7 +213,7 @@ This calculation uses the compound interest formula: A = P(1 + r/n)^(nt)
 
 ---
 
-## � Authentication Options
+## 🔐 Authentication Options
 
 The SDK uses simple **cookie-based authentication**. Minimum required:
 
@@ -256,7 +256,7 @@ ai = MetaAI()  # Automatically loads from META_AI_* environment variables
 
 ---
 
-## �💬 Chat Features
+## 💬 Chat Features
 
 ### Streaming Responses
 
@@ -356,8 +356,10 @@ pip install metaai-sdk[api]
 
 ```env
 META_AI_DATR=your_datr_cookie
-META_AI_ABRA_SESS=your_abra_sess_cookie
 META_AI_ECTO_1_SESS=your_ecto_1_sess_cookie
+
+# Optional (recommended when available)
+META_AI_ABRA_SESS=your_abra_sess_cookie
 ```
 
 3. **Start the server:**
@@ -445,7 +447,21 @@ while True:
 
 ### Test All Features
 
-Run the comprehensive SDK + API test runner to verify chat, upload, image, video, async, and extend flows end-to-end:
+Run test scripts in this order for fastest troubleshooting and full coverage:
+
+1. Chat flow (SDK + optional API):
+
+```bash
+python scripts/test_chat_feature.py --test-api --base-url http://127.0.0.1:8001 --output tests/integration/outputs/chat_feature_test_results.json
+```
+
+2. Image upload + image generation + animation from uploaded image:
+
+```bash
+python scripts/test_upload_and_generation.py --base-url http://127.0.0.1:8001
+```
+
+3. Full SDK + API validation (chat, upload, image, video, async, extend):
 
 ```bash
 python scripts/test_all_features_complete.py --base-url http://127.0.0.1:8001 --output tests/integration/outputs/feature_test_report_sdk_api_final.json
@@ -453,9 +469,40 @@ python scripts/test_all_features_complete.py --base-url http://127.0.0.1:8001 --
 
 Add `--video-auto-poll` if you want the runner to wait for final media URLs during video checks.
 
+### Extend Animation + Image Upload Workflow (SDK)
+
+```python
+from metaai_api import MetaAI
+
+ai = MetaAI()
+
+# 1) Upload an image
+upload = ai.upload_image("path/to/image.jpg")
+if not upload.get("success"):
+    raise RuntimeError("Upload failed")
+
+media_id = upload["media_id"]
+metadata = {
+    "file_size": upload.get("file_size", 0),
+    "mime_type": upload.get("mime_type", "image/jpeg"),
+}
+
+# 2) Animate the uploaded image into video
+video = ai.generate_video_new(
+    prompt="animate this image with smooth cinematic motion",
+    media_ids=[media_id],
+    attachment_metadata=metadata,
+)
+
+# 3) Extend one generated animation clip
+if video.get("success") and video.get("media_ids"):
+    extended = ai.extend_video(video["media_ids"][0])
+    print("Extended video URLs:", extended.get("video_urls", []))
+```
+
 ---
 
-## �🎬 Video Generation
+## 🎬 Video Generation
 
 Create AI-generated videos from text descriptions!
 
@@ -463,10 +510,12 @@ Create AI-generated videos from text descriptions!
 
 1. Visit [meta.ai](https://www.meta.ai) in your browser and login
 2. Open DevTools (F12) → **Application** tab → **Cookies** → https://meta.ai
-3. Copy these 3 cookie values:
+3. Copy these required cookie values:
    - `datr`
-   - `abra_sess`
    - `ecto_1_sess` (most important for generation)
+
+   Optional (if available):
+   - `abra_sess`
 
 > **💡 Note:** Only datr and ecto_1_sess cookies are needed. No tokens (lsd/fb_dtsg) required!
 
@@ -495,19 +544,21 @@ Run: python auto_refresh_cookies.py
 
 - `ecto_1_sess` ⭐ - Session token (expires frequently, **must refresh**)
 - `rd_challenge` - Challenge cookie (auto-updated by SDK)
-- `ps_l`, `ps_n` - Portal flags (required for generation)
+- `ps_l`, `ps_n` - Portal flags (optional, may improve reliability)
 
 ### Example 1: Generate Your First Video
 
 ```python
 from metaai_api import MetaAI
 
-# Your browser cookies (only 3 required!)
+# Your browser cookies (minimum required)
 cookies = {
     "datr": "your_datr_value_here",
-    "abra_sess": "your_abra_sess_value_here",
     "ecto_1_sess": "your_ecto_1_sess_value_here"
 }
+
+# Optional cookie (recommended when available)
+# cookies["abra_sess"] = "your_abra_sess_value_here"
 
 # Initialize with cookies
 ai = MetaAI(cookies=cookies)
@@ -547,12 +598,11 @@ else:
 1. Open https://meta.ai in your browser and login
 2. Press **F12** → **Application** tab
 3. Navigate to **Cookies** → `https://meta.ai`
-4. Copy these 3 values:
+4. Copy these required values:
    - `datr`
-   - `abra_sess`
    - `ecto_1_sess`
+   - optional: `abra_sess`
 5. Add to your Python code or `.env` file
-6. Alternatively, right-click → **View Page Source** → Search for `"LSD",[],{"token":"` and `DTSGInitData",[],{"token":"`
 
 ### Example 2: Generate Multiple Videos
 
@@ -651,10 +701,11 @@ Upload images to Meta AI for analysis, similar image generation, and video creat
 ```python
 from metaai_api import MetaAI
 
-# Initialize with Facebook cookies (required for image operations)
+# Initialize with cookies (datr + ecto_1_sess required)
 ai = MetaAI(cookies={
     "datr": "your_datr_cookie",
-    "abra_sess": "your_abra_sess_cookie"
+    "ecto_1_sess": "your_ecto_1_sess_cookie",
+    # "abra_sess": "your_abra_sess_cookie"  # Optional
 })
 
 # Step 1: Upload an image
@@ -785,7 +836,7 @@ Explore working examples in the `examples/` directory:
 ```bash
 # Clone the repository
 git clone https://github.com/mir-ashiq/metaai-api.git
-cd meta-ai-python
+cd metaai-api
 
 # Run simple example
 python examples/simple_example.py
@@ -918,8 +969,10 @@ Store credentials securely:
 ```bash
 # .env file
 META_AI_DATR=your_datr_value
-META_AI_ABRA_SESS=your_abra_sess_value
 META_AI_ECTO_1_SESS=your_ecto_1_sess_value
+
+# Optional
+META_AI_ABRA_SESS=your_abra_sess_value
 ```
 
 Load in Python:
@@ -937,9 +990,11 @@ from dotenv import load_dotenv
 load_dotenv()
 cookies = {
     "datr": os.getenv("META_AI_DATR"),
-    "abra_sess": os.getenv("META_AI_ABRA_SESS"),
     "ecto_1_sess": os.getenv("META_AI_ECTO_1_SESS")
 }
+
+if os.getenv("META_AI_ABRA_SESS"):
+    cookies["abra_sess"] = os.getenv("META_AI_ABRA_SESS")
 
 ai = MetaAI(cookies=cookies)
 ```
@@ -972,7 +1027,7 @@ except Exception as e:
 ## 🌟 Project Structure
 
 ```
-meta-ai-python/
+metaai-api/
 │
 ├── 📁 src/metaai_api/        # Core package
 │   ├── __init__.py            # Package initialization
@@ -1058,8 +1113,8 @@ This project is an **independent implementation** and is **not officially affili
 
 | Resource                  | Link                                                                                                                          |
 | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| 📦 **PyPI Package**       | [pypi.org/project/metaai_api](https://pypi.org/project/metaai_api/)                                                           |
-| 🐙 **GitHub Repository**  | [github.com/mir-ashiq/meta-ai-python](https://github.com/mir-ashiq/metaai-api)                                                |
+| 📦 **PyPI Package**       | [pypi.org/project/metaai-sdk](https://pypi.org/project/metaai-sdk/)                                                           |
+| 🐙 **GitHub Repository**  | [github.com/mir-ashiq/metaai-api](https://github.com/mir-ashiq/metaai-api)                                                    |
 | 📖 **Full Documentation** | [Quick Start](QUICK_START.md) • [Generation API](GENERATION_API.md)                                                           |
 | 💬 **Get Help**           | [Issues](https://github.com/mir-ashiq/metaai-api/issues) • [Discussions](https://github.com/mir-ashiq/metaai-api/discussions) |
 

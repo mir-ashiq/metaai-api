@@ -14,7 +14,6 @@ Major update adding comprehensive image upload support with analysis, generation
 ### Added
 
 - 📤 **Image Upload Support** - Upload images for AI processing
-
   - New `upload_image()` method in `MetaAI` class
   - `ImageUploader` class using Meta's rupload protocol
   - UUID-based upload session management
@@ -22,34 +21,29 @@ Major update adding comprehensive image upload support with analysis, generation
   - Returns `media_id` for use in subsequent operations
 
 - 🔍 **Image Analysis** - Analyze and describe uploaded images
-
   - Chat endpoint now accepts `media_ids` parameter
   - Support for `attachment_metadata` (file_size, mime_type)
   - Multi-step agent response parsing for detailed descriptions
   - Entrypoint routing (KADABRA**DISCOVER**UNIFIED_INPUT_BAR)
 
 - 🎨 **Similar Image Generation** - Create variations of uploaded images
-
   - Generate similar images in different styles
   - Extract URLs from `content.imagine.session.media_sets`
   - Support for 4 simultaneous image generations
   - Fallback URL field checking (uri, image_uri, maybe_image_uri, url)
 
 - 🎬 **Video from Images** - Animate uploaded static images
-
   - Video generation now accepts uploaded image media_ids
   - Full `attachment_metadata` support
   - Integration with existing `VideoGenerator` class
 
 - 🔧 **Response Parser Enhancements**
-
   - Enhanced `format_response()` for multi-step agent responses
   - Updated `extract_media()` with primary/fallback location checking
   - Improved `extract_data()` with Kadabra structure support
   - Added support for `XFBAbraMessageMultiStepResponseContent`
 
 - 📚 **Comprehensive Documentation**
-
   - Complete image upload guide (`IMAGE_UPLOAD_README.md`)
   - Updated quick usage guide (`QUICK_USAGE.md`)
   - New complete workflow example (`examples/image_workflow_complete.py`)
@@ -93,7 +87,6 @@ First stable release of the Meta AI Python SDK with comprehensive features for M
 ### Added
 
 - 🎬 **Video Generation Support** - Generate AI videos from text prompts
-
   - New `generate_video()` method in `MetaAI` class
   - `VideoGenerator` class for advanced video generation control
   - Automatic token fetching (lsd, fb_dtsg) from cookies
@@ -101,13 +94,11 @@ First stable release of the Meta AI Python SDK with comprehensive features for M
   - Support for multiple video qualities (HD/SD)
 
 - 🔐 **Automatic Token Management**
-
   - Auto-fetch missing `lsd` and `fb_dtsg` tokens from Meta AI
   - No manual token configuration required
   - Seamless integration with existing cookie authentication
 
 - 📚 **Enhanced Documentation**
-
   - Complete video generation guide (`VIDEO_GENERATION_README.md`)
   - API reference with detailed parameters
   - Multiple usage examples
@@ -207,9 +198,11 @@ cookies = {
 # New way (automatic)
 cookies = {
     "datr": "...",
-    "abra_sess": "..."
-    # lsd and fb_dtsg auto-fetched!
+  "ecto_1_sess": "..."  # Required
 }
+
+# Optional for broader compatibility
+# cookies["abra_sess"] = "..."
 ```
 
 **Backward Compatibility**:

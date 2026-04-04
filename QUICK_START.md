@@ -85,10 +85,6 @@ curl -X POST http://127.0.0.1:8000/chat \
 
 ## 🔧 Setup Requirements
 
----
-
-## 🔧 Setup Requirements
-
 ### Required Cookies
 
 You need valid Meta AI cookies in your `.env` file:
@@ -107,16 +103,21 @@ META_AI_ABRA_SESS=your_abra_sess_cookie
 1. Open https://meta.ai in your browser and login
 2. Press **F12** to open DevTools
 3. Go to **Application** → **Cookies** → https://meta.ai
-4. Copy these 3 cookie values:
+4. Copy these required cookie values:
    - `datr`
-   - `abra_sess`
    - `ecto_1_sess`
+
+   Optional (if available):
+   - `abra_sess`
+
 5. Create/update `.env` file in project root:
 
 ```bash
 META_AI_DATR=your_datr_value
-META_AI_ABRA_SESS=your_abra_sess_value
 META_AI_ECTO_1_SESS=your_ecto_1_sess_value
+
+# Optional
+META_AI_ABRA_SESS=your_abra_sess_value
 ```
 
 ### Test Your Setup
@@ -240,15 +241,16 @@ chat_result = api.prompt("What is AI?")
 ```
 Browser: https://meta.ai
 DevTools: F12 → Application → Cookies
-Copy: datr, abra_sess, ecto_1_sess
+Copy required: datr, ecto_1_sess
+Optional: abra_sess
 Add to: .env file
 ```
 
 ### 2. Test Connectivity
 
 ```bash
-python test_simple.py
-# Expected: Either success or clear error messages
+python scripts/test_chat_feature.py
+# Expected: SDK chat tests pass and output JSON summary
 ```
 
 ### 3. Check Results
@@ -272,12 +274,13 @@ api = MetaAI()
 
 ## 🐛 Debugging
 
-### If test_simple.py hangs:
+### If a test script appears to hang:
 
 ```bash
 # Press Ctrl+C to interrupt
-# Issue is likely API timeout
-# Solution: Use test_mock.py instead (no API calls)
+# Issue is likely network timeout or expired cookies
+# Solution: refresh cookies, then retry with a shorter test first:
+# python scripts/test_chat_feature.py
 ```
 
 ### If you see "JSON parse failed":
@@ -287,12 +290,11 @@ api = MetaAI()
 # Solution: Extract fresh cookies and try again
 ```
 
-### If you see KeyError 'fb_dtsg':
+### If chat/image/video requests fail with auth errors:
 
 ```bash
-# Chat needs fb_dtsg token
-# It will auto-fetch on first use
-# Or: Skip chat, use generation_api directly
+# Most likely cause: expired ecto_1_sess cookie
+# Solution: refresh datr + ecto_1_sess from browser DevTools and retry
 ```
 
 ---

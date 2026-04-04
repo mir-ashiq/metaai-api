@@ -106,13 +106,15 @@ from metaai_api import MetaAI
 # Initialize with cookie-based authentication
 ai = MetaAI()
 
-# Or with explicit cookies
+# Or with explicit cookies (minimum required)
 cookies = {
     'datr': 'your_datr_value',
-    'abra_sess': 'your_abra_sess_value',
     'ecto_1_sess': 'your_ecto_1_sess_value'
 }
 ai = MetaAI(cookies=cookies)
+
+# Optional cookie for broader compatibility
+# cookies['abra_sess'] = 'your_abra_sess_value'
 
 # Generate video (auto-polls by default)
 result = ai.generate_video_new("Astronaut floating in space")
@@ -144,17 +146,13 @@ if result['success']:
 
 ## Testing
 
-Run the test script:
+Run tests in this order:
 
 ```bash
-python test_generation.py
-```
+# 1) Upload + image/video generation from uploaded image
+python scripts/test_upload_and_generation.py --base-url http://127.0.0.1:8001
 
-This will test both image and video generation using the cookies from your `.env` file.
-
-For the full SDK + API suite, run:
-
-```bash
+# 2) Comprehensive SDK + API test suite
 python scripts/test_all_features_complete.py --base-url http://127.0.0.1:8001 --output tests/integration/outputs/feature_test_report_sdk_api_final.json
 ```
 

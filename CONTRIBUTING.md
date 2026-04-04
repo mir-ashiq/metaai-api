@@ -21,8 +21,8 @@ This project and everyone participating in it is governed by our commitment to p
 1. **Fork the repository** on GitHub
 2. **Clone your fork** locally:
    ```bash
-   git clone https://github.com/YOUR-USERNAME/meta-ai-python.git
-   cd meta-ai-python
+   git clone https://github.com/YOUR-USERNAME/metaai-api.git
+   cd metaai-api
    ```
 3. **Create a branch** for your contribution:
    ```bash
@@ -59,7 +59,7 @@ pip install -e ".[dev]"
 ### Project Structure
 
 ```
-meta-ai-python/
+metaai-api/
 ├── src/metaai_api/
 │   ├── __init__.py
 │   ├── main.py              # Core MetaAI class
@@ -112,13 +112,12 @@ We welcome contributions in these areas:
 1. **Update your fork**:
 
    ```bash
-   git remote add upstream https://github.com/meta-ai-sdk/meta-ai-python.git
+   git remote add upstream https://github.com/mir-ashiq/metaai-api.git
    git fetch upstream
    git merge upstream/main
    ```
 
 2. **Make your changes**:
-
    - Write clean, readable code
    - Follow existing code style
    - Add docstrings to new functions/classes
@@ -141,7 +140,6 @@ We welcome contributions in these areas:
    ```
 
    Use conventional commits:
-
    - `feat:` - New feature
    - `fix:` - Bug fix
    - `docs:` - Documentation changes

@@ -65,13 +65,16 @@ We take the security of Meta AI Python SDK seriously. If you discover a security
 import os
 cookies = {
     "datr": os.getenv("META_AI_DATR"),
-    "abra_sess": os.getenv("META_AI_ABRA_SESS")
+    "ecto_1_sess": os.getenv("META_AI_ECTO_1_SESS")
 }
+
+if os.getenv("META_AI_ABRA_SESS"):
+    cookies["abra_sess"] = os.getenv("META_AI_ABRA_SESS")
 
 # ❌ Bad: Hardcoded credentials
 cookies = {
     "datr": "abc123...",  # Don't do this!
-    "abra_sess": "xyz789..."
+    "ecto_1_sess": "xyz789..."
 }
 ```
 
@@ -91,6 +94,9 @@ with open("secrets.json") as f:
 ```bash
 # Set environment variables
 export META_AI_DATR="your_datr_value"
+export META_AI_ECTO_1_SESS="your_ecto_1_sess_value"
+
+# Optional
 export META_AI_ABRA_SESS="your_abra_sess_value"
 ```
 
