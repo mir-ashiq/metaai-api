@@ -49,10 +49,14 @@ def _looks_like_capability_drift(reply: str) -> bool:
         "what can i help you create",
         "what would you like me to create",
         "want me to animate",
+        "want me to make",
         "want me to turn",
         "create something",
         "generate images",
         "generate a video",
+        "animate the numbers",
+        "animate this",
+        "animate it",
         "make images",
         "make videos",
     )
@@ -420,8 +424,11 @@ def main() -> int:
         results["interrupted"] = True
 
     all_ok = all(bool(turn.get("ok")) for turn in results["turns"])
+    drift_turns = [int(turn.get("turn")) for turn in results["turns"] if turn.get("capability_drift")]
     results["total_turns"] = len(results["turns"])
     results["all_passed"] = all_ok and len(results["turns"]) > 0
+    results["has_capability_drift"] = bool(drift_turns)
+    results["capability_drift_turns"] = drift_turns
 
     _save_results(args.output, results)
 
