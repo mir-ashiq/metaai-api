@@ -566,14 +566,19 @@ ai = MetaAI(cookies=cookies)
 # Generate a video
 result = ai.generate_video_new("A majestic lion walking through the African savanna at sunset")
 
-if result["success"]:
+if result["status"] == "READY":
     print("✅ Video generated successfully!")
     print(f"🎬 Generated {len(result['video_urls'])} videos")
     for i, url in enumerate(result['video_urls'], 1):
         print(f"   Video {i}: {url[:80]}...")
     print(f"📝 Prompt: {result['prompt']}")
+elif result["status"] == "PROCESSING":
+    print("⏳ Video request accepted and still processing")
+    print("Media IDs:", result.get("media_ids", []))
 else:
-    print("⏳ Video generation failed, check your cookies")
+    print("❌ Video generation failed")
+    print(result.get("error"))
+    print(result.get("graphql_errors", []))
 ```
 
 **Output:**
@@ -973,6 +978,11 @@ META_AI_ECTO_1_SESS=your_ecto_1_sess_value
 
 # Optional
 META_AI_ABRA_SESS=your_abra_sess_value
+
+# Optional persisted-query hotfix overrides
+META_AI_DOC_ID_TEXT_TO_IMAGE=override_doc_id
+META_AI_DOC_ID_TEXT_TO_VIDEO=override_doc_id
+# ...or use META_AI_DOC_ID for both text-to-image and text-to-video
 ```
 
 Load in Python:
@@ -1007,12 +1017,17 @@ from metaai_api import MetaAI
 ai = MetaAI(cookies=cookies)
 
 try:
-    result = ai.generate_video("Your prompt")
+    result = ai.generate_video_new("Your prompt")
 
-    if result["success"]:
+    if result["status"] == "READY":
         print(f"✅ Video: {result['video_urls'][0]}")
+    elif result["status"] == "PROCESSING":
+        print("⏳ Video still processing")
+        print("Media IDs:", result.get("media_ids", []))
     else:
-        print("⏳ Video still processing, try again later")
+        print("❌ Video generation failed")
+        print(result.get("error"))
+        print(result.get("graphql_errors", []))
 
 except ValueError as e:
     print(f"❌ Configuration error: {e}")

@@ -262,13 +262,13 @@ Expected output: `Cookies: 2` or higher (depending on optional cookies)
 
 ## 🐛 Troubleshooting
 
-| Error                   | Cause                    | Solution                               |
-| ----------------------- | ------------------------ | -------------------------------------- |
-| 403 Forbidden           | Bad ecto_1_sess          | Use line 224 from curl.json            |
-| "Access token required" | Wrong ecto_1_sess timing | Use later timestamp from curl.json     |
-| 400 Bad Request         | Missing datr/ecto_1_sess | Add required cookies to `.env`         |
-| Empty response          | Wrong DOC_ID             | Use `83c79c30d655e0ae6f20af0e129101e2` |
-| JSON parse error        | Wrong Accept header      | Use `text/event-stream`                |
+| Error                                     | Cause                        | Solution                                                               |
+| ----------------------------------------- | ---------------------------- | ---------------------------------------------------------------------- |
+| 403 Forbidden                             | Bad ecto_1_sess              | Use line 224 from curl.json                                            |
+| "Access token required"                   | Wrong ecto_1_sess timing     | Use later timestamp from curl.json                                     |
+| 400 Bad Request                           | Missing datr/ecto_1_sess     | Add required cookies to `.env`                                         |
+| Empty response / GraphQL validation error | Stale persisted query DOC_ID | Capture fresh doc*id from browser or set `META_AI_DOC_ID*\*` overrides |
+| JSON parse error                          | Wrong Accept header          | Use `text/event-stream`                                                |
 
 ---
 

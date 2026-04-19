@@ -298,6 +298,25 @@ class TestGenerationAPIStatusQueries:
 class TestGenerationAPIResponseParsing:
     """Test response parsing for image and video generation."""
 
+    def test_build_base_variables_text_to_video_matches_latest_capture(self):
+        """TEXT_TO_VIDEO payload should follow current browser-captured variable shape."""
+        from metaai_api.generation import GenerationAPI
+
+        api = GenerationAPI()
+        variables = api._build_base_variables(
+            prompt="astronaut in space",
+            operation="TEXT_TO_VIDEO",
+            content_prefix="Animate",
+        )
+
+        imagine_request = variables["imagineOperationRequest"]
+
+        assert imagine_request["operation"] == "TEXT_TO_VIDEO"
+        assert imagine_request["textToImageParams"]["prompt"] == "astronaut in space"
+        assert imagine_request["requestId"] is None
+        assert variables["entryPoint"] == "KADABRA__UNKNOWN"
+        assert variables["currentBranchPath"] == "0"
+
     def test_extract_image_urls(self, mock_image_generation_response):
         """Test extracting image URLs from response."""
         from metaai_api.generation import GenerationAPI
@@ -318,6 +337,293 @@ class TestGenerationAPIResponseParsing:
         
         assert len(urls) > 0
         assert any(".mp4" in url for url in urls)
+
+    def test_parse_sse_response_surfaces_graphql_errors(self):
+        """HTTP 200 with GraphQL errors should be marked as FAILED."""
+        from metaai_api.generation import GenerationAPI
+
+        api = GenerationAPI()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.text = (
+            'data: {"errors":[{"message":"Cannot query field \\\"name\\\" on type \\\"User\\\".",' 
+            '"extensions":{"code":"GRAPHQL_VALIDATION_FAILED"}}]}'
+        )
+
+        parsed = api._parse_sse_response(mock_response)
+
+        assert parsed["has_graphql_errors"] is True
+        assert parsed["streaming_state"] == "FAILED"
+        assert len(parsed["graphql_errors"]) == 1
+        assert parsed["graphql_errors"][0]["code"] == "GRAPHQL_VALIDATION_FAILED"
+
+    @patch.dict("os.environ", {"META_AI_DOC_ID_TEXT_TO_IMAGE": "abc123override"}, clear=False)
+    @patch("requests.Session.post")
+    def test_generate_image_uses_doc_id_override(self, mock_post):
+        """Environment override should be used for TEXT_TO_IMAGE doc_id payloads."""
+        from metaai_api.generation import GenerationAPI
+
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.headers = {"Content-Type": "text/event-stream"}
+        mock_response.text = (
+            'data: {"data":{"sendMessageStream":{'
+            '"streamingState":"OVERALL_DONE",'
+            '"conversationId":"conv_1",'
+            '"images":[{"id":"img_1","url":"https://example.com/image.jpg"}]'
+            '}}}'
+        )
+        mock_response.raise_for_status = Mock()
+        mock_post.return_value = mock_response
+
+        api = GenerationAPI()
+        result = api.generate_image("test image prompt")
+
+        assert result["images"] == ["https://example.com/image.jpg"]
+        sent_payload = mock_post.call_args.kwargs["json"]
+        assert sent_payload["doc_id"] == "abc123override"
+
+
+class TestMetaAIGenerationContracts:
+    """Test strict success/error contract for generation wrappers."""
+
+    def _build_ai_with_mock_generation(self) -> Any:
+        from metaai_api.main import MetaAI
+
+        ai = MetaAI.__new__(MetaAI)
+        ai.generation_api = Mock()
+        return ai
+
+    def test_generate_image_new_fails_on_graphql_error(self):
+        """Image wrapper must return success=False on GraphQL error events."""
+        ai = self._build_ai_with_mock_generation()
+        ai.generation_api.generate_image.return_value = {
+            "images": [],
+            "has_graphql_errors": True,
+            "graphql_errors": [
+                {
+                    "message": "Cannot query field 'name' on type 'User'.",
+                    "code": "GRAPHQL_VALIDATION_FAILED",
+                }
+            ],
+            "events": [],
+        }
+        ai.generation_api.extract_media_urls.return_value = []
+
+        result = ai.generate_image_new("a red apple")
+
+        assert result["success"] is False
+        assert result["status"] == "FAILED"
+        assert result["has_graphql_errors"] is True
+        assert "GRAPHQL_VALIDATION_FAILED" in result["error"]
+
+    def test_generate_video_new_processing_without_media_is_not_success(self):
+        """Strict semantics: no media output means success=False even while processing."""
+        ai = self._build_ai_with_mock_generation()
+        ai.generation_api.generate_video.return_value = {
+            "conversation_id": "conv_123",
+            "video_objects": [],
+            "media_ids": [],
+            "events": [],
+            "has_graphql_errors": False,
+            "graphql_errors": [],
+        }
+        ai.generation_api.fetch_video_urls_by_media_id = Mock(return_value=[])
+        ai.generation_api.poll_for_video_ids = Mock(return_value=[])
+
+        result = ai.generate_video_new("ocean waves", auto_poll=False)
+
+        assert result["success"] is False
+        assert result["status"] == "PROCESSING"
+        assert result["processing"] is True
+        assert result["has_graphql_errors"] is False
+
+    def test_generate_video_new_fails_fast_on_graphql_errors(self):
+        """GraphQL errors must fail and skip polling/fetch retries."""
+        ai = self._build_ai_with_mock_generation()
+        ai.generation_api.generate_video.return_value = {
+            "conversation_id": "conv_err",
+            "video_objects": [],
+            "media_ids": [],
+            "has_graphql_errors": True,
+            "graphql_errors": [
+                {
+                    "message": "Cannot query field 'name' on type 'User'.",
+                    "code": "GRAPHQL_VALIDATION_FAILED",
+                }
+            ],
+            "events": [],
+        }
+        ai.generation_api.fetch_video_urls_by_media_id = Mock(return_value=[])
+        ai.generation_api.poll_for_video_ids = Mock(return_value=[])
+
+        result = ai.generate_video_new("a cat walking", auto_poll=True)
+
+        assert result["success"] is False
+        assert result["status"] == "FAILED"
+        assert result["processing"] is False
+        assert result["has_graphql_errors"] is True
+        ai.generation_api.fetch_video_urls_by_media_id.assert_not_called()
+        ai.generation_api.poll_for_video_ids.assert_not_called()
+
+    def test_extend_video_fails_on_graphql_error(self):
+        """Extend wrapper must propagate GraphQL failures with strict semantics."""
+        ai = self._build_ai_with_mock_generation()
+        ai.generation_api.extend_video.return_value = {
+            "conversation_id": "conv_extend",
+            "media_ids": [],
+            "has_graphql_errors": True,
+            "graphql_errors": [
+                {
+                    "message": "Persisted query mismatch",
+                    "code": "GRAPHQL_VALIDATION_FAILED",
+                }
+            ],
+            "events": [],
+        }
+        ai.generation_api.fetch_video_urls_by_media_id = Mock(return_value=[])
+
+        result = ai.extend_video("123456", auto_poll=True)
+
+        assert result["success"] is False
+        assert result["status"] == "FAILED"
+        assert result["has_graphql_errors"] is True
+        ai.generation_api.fetch_video_urls_by_media_id.assert_not_called()
+
+
+# ============================================================================
+# TESTS: Chat Prompt Parsing and Fallbacks
+# ============================================================================
+
+class _FakeStreamingResponse:
+    """Minimal response object for testing stream parsing paths."""
+
+    def __init__(self, lines, status_code=200):
+        self._lines = lines
+        self.status_code = status_code
+        self.headers = {"Content-Type": "text/event-stream"}
+        self.text = "\n".join(lines)
+
+    def iter_lines(self, decode_unicode=True):
+        for line in self._lines:
+            yield line
+
+    def raise_for_status(self):
+        return None
+
+    def close(self):
+        return None
+
+
+class TestMetaAIChatPromptParsing:
+    """Validate chat prompt parsing against modern and fallback response shapes."""
+
+    def _build_ai_for_prompt_tests(self, post_side_effect):
+        from metaai_api.main import MetaAI
+
+        ai = MetaAI.__new__(MetaAI)
+        ai.access_token = "ecto1:test-token"
+        ai.cookies = {"datr": "test"}
+        ai.external_conversation_id = None
+        ai.offline_threading_id = None
+        ai.session = Mock()
+        ai.session.headers = {
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        }
+        ai.session.post = Mock(side_effect=post_side_effect)
+        ai.get_cookie_header = Mock(return_value="datr=test")
+        ai.extract_access_token_from_page = Mock(return_value="ecto1:test-token")
+        ai._check_response_for_auth_error = Mock(return_value=False)
+        return ai
+
+    @patch.dict("os.environ", {"META_AI_CHAT_DOC_ID": "doc-primary", "META_AI_CHAT_DOC_ID_ALT": "doc-alt"}, clear=False)
+    def test_prompt_falls_back_to_alt_doc_id_when_primary_has_no_content(self):
+        """If primary doc_id yields no text, prompt should retry with configured fallback doc_id."""
+        ai = self._build_ai_for_prompt_tests(
+            [
+                _FakeStreamingResponse(
+                    [
+                        'data: {"data":{"sendMessageStream":{"conversationId":"conv-empty"}}}',
+                    ]
+                ),
+                _FakeStreamingResponse(
+                    [
+                        'data: {"data":{"sendMessageStream":{"conversationId":"conv-ok","content":"Hello from fallback"}}}',
+                    ]
+                ),
+            ]
+        )
+
+        result = ai.prompt("hello", stream=False, new_conversation=True)
+
+        assert result["message"] == "Hello from fallback"
+        assert ai.external_conversation_id == "conv-ok"
+        first_payload = ai.session.post.call_args_list[0].kwargs["json"]
+        second_payload = ai.session.post.call_args_list[1].kwargs["json"]
+        assert first_payload["doc_id"] == "doc-primary"
+        assert second_payload["doc_id"] == "doc-alt"
+
+    @patch.dict("os.environ", {"META_AI_CHAT_DOC_ID": "doc-primary", "META_AI_CHAT_DOC_ID_ALT": "doc-alt"}, clear=False)
+    def test_prompt_parses_plain_json_chat_message_shape(self):
+        """Parser should accept non-SSE JSON lines returned by some chat doc_id variants."""
+        ai = self._build_ai_for_prompt_tests(
+            [
+                _FakeStreamingResponse(
+                    [
+                        '{"data":{"message":{"conversationId":"conv-json","text":"Plain JSON chat response"}}}',
+                    ]
+                )
+            ]
+        )
+
+        result = ai.prompt("hello", stream=False, new_conversation=True)
+
+        assert result["message"] == "Plain JSON chat response"
+        assert ai.external_conversation_id == "conv-json"
+
+    @patch.dict("os.environ", {}, clear=True)
+    def test_prompt_uses_unified_fallback_when_legacy_doc_id_fails(self):
+        """Without env overrides, prompt should fall back from legacy chat doc_id to unified fallback."""
+        ai = self._build_ai_for_prompt_tests(
+            [
+                _FakeStreamingResponse(
+                    [
+                        'data: {"errors":[{"message":"Cannot query field \'name\' on type \'User\'.","extensions":{"code":"GRAPHQL_VALIDATION_FAILED"}}]}',
+                    ]
+                ),
+                _FakeStreamingResponse(
+                    [
+                        'data: {"data":{"sendMessageStream":{"conversationId":"conv-unified","content":"Fallback worked"}}}',
+                    ]
+                ),
+            ]
+        )
+
+        result = ai.prompt("hello", stream=False, new_conversation=True)
+
+        assert result["message"] == "Fallback worked"
+        first_payload = ai.session.post.call_args_list[0].kwargs["json"]
+        second_payload = ai.session.post.call_args_list[1].kwargs["json"]
+        assert first_payload["doc_id"] == "ac0bad4b9787a393e160fb39f43404c1"
+        assert second_payload["doc_id"] == "2f707e4a86f4b01adba97e1376cbdc14"
+
+    @patch.dict("os.environ", {"META_AI_CHAT_DOC_ID": "doc-primary", "META_AI_CHAT_DOC_ID_ALT": "doc-alt"}, clear=False)
+    def test_prompt_surfaces_graphql_validation_errors(self):
+        """GraphQL validation failures in 200 responses should raise explicit errors."""
+
+        def _error_response(*args, **kwargs):  # noqa: ANN002, ANN003
+            return _FakeStreamingResponse(
+                [
+                    'data: {"errors":[{"message":"Cannot query field \'name\' on type \'User\'.","extensions":{"code":"GRAPHQL_VALIDATION_FAILED"}}]}',
+                ]
+            )
+
+        ai = self._build_ai_for_prompt_tests(_error_response)
+
+        with pytest.raises(Exception) as exc:
+            ai.prompt("hello", stream=False, new_conversation=True)
+
+        assert "GRAPHQL_VALIDATION_FAILED" in str(exc.value)
 
 
 # ============================================================================

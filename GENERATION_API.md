@@ -162,7 +162,7 @@ python scripts/test_all_features_complete.py --base-url http://127.0.0.1:8001 --
 
 - **URL**: `https://www.meta.ai/api/graphql`
 - **Method**: POST
-- **Doc ID**: `904075722675ba2c1a7b333d4c525a1b`
+- **Doc ID**: Runtime-resolved in `GenerationAPI` (defaults can be overridden via env)
 
 ### Image Generation
 
@@ -188,7 +188,7 @@ Both operations use similar request structure:
 
 ```json
 {
-  "doc_id": "904075722675ba2c1a7b333d4c525a1b",
+  "doc_id": "<resolved_doc_id>",
   "variables": {
     "conversationId": "uuid",
     "content": "Imagine/Animate <prompt>",
@@ -204,18 +204,65 @@ Both operations use similar request structure:
 }
 ```
 
+### Runtime `doc_id` Overrides
+
+When Meta rotates persisted queries, you can hotfix without code edits by setting env vars:
+
+- `META_AI_DOC_ID_TEXT_TO_IMAGE`
+- `META_AI_DOC_ID_TEXT_TO_VIDEO`
+- `META_AI_DOC_ID_IMAGE_ALT`
+- `META_AI_DOC_ID_EXTEND_VIDEO`
+- `META_AI_DOC_ID_FETCH_CONVERSATION`
+- `META_AI_DOC_ID_FETCH_MEDIA`
+- `META_AI_DOC_ID_POLL_MEDIA`
+
+Backward-compatible shortcut:
+
+- `META_AI_DOC_ID` (applies to both text-to-image and text-to-video)
+
+The SDK logs active doc_id sources on startup (default vs env override) to simplify diagnostics.
+
 ## Response Format
 
-The API returns responses in multipart/mixed format or JSON. The implementation automatically:
+The API returns responses in multipart/mixed format, SSE (`text/event-stream`), or JSON. The implementation automatically:
 
 - Parses multipart responses
 - Extracts media URLs (images/videos)
-- Returns structured data
+- Surfaces GraphQL validation/runtime errors from SSE events
+- Returns structured status fields
 
-For video generation (`generate_video_new`), the structured response includes:
+For generation methods (`generate_image_new`, `generate_video_new`, `extend_video`), responses now include:
 
-- `video_urls`: Actual playable media URLs (typically `.mp4`)
-- `media_ids`: Media IDs for follow-up workflows such as extending videos
+- `success`: Strict success indicator
+- `status`: `READY`, `PROCESSING`, or `FAILED`
+- `processing`: Convenience boolean (`status == PROCESSING`)
+- `has_graphql_errors`: Whether GraphQL errors were detected in events
+- `graphql_errors`: Normalized error list with message/code
+- Media payload fields (`image_urls`, `video_urls`, `media_ids`, etc.)
+
+Success contract:
+
+- `success=false` if GraphQL errors exist
+- `success=false` if no media output (`media_ids`/URLs) was produced
+- `success=true` only when media output exists and no GraphQL errors are present
+
+Example failure payload:
+
+```json
+{
+  "success": false,
+  "status": "FAILED",
+  "processing": false,
+  "has_graphql_errors": true,
+  "graphql_errors": [
+    {
+      "message": "Cannot query field \"name\" on type \"User\".",
+      "code": "GRAPHQL_VALIDATION_FAILED"
+    }
+  ],
+  "error": "GraphQL error (GRAPHQL_VALIDATION_FAILED): Cannot query field \"name\" on type \"User\"."
+}
+```
 
 ## Notes
 
@@ -227,8 +274,9 @@ For video generation (`generate_video_new`), the structured response includes:
 ## Troubleshooting
 
 1. **Authentication Errors**: Make sure your cookies are fresh and valid
-2. **Missing URLs**: Check that the response contains the expected data structure
-3. **Rate Limiting**: Meta AI may rate limit requests, add delays if needed
+2. **GraphQL Validation Errors**: If you see `GRAPHQL_VALIDATION_FAILED` with HTTP 200, persisted query doc*ids likely drifted. Update with fresh browser-captured values or use `META_AI_DOC_ID*\*` overrides.
+3. **Missing URLs**: Check `status`, `has_graphql_errors`, and `graphql_errors` before retrying.
+4. **Rate Limiting**: Meta AI may rate limit requests, add delays if needed
 
 ## Network Capture Details
 
@@ -239,7 +287,7 @@ This implementation is based on analyzing captured network requests:
 
 Key patterns identified:
 
-- Same doc_id for both image and video generation
+- Persisted query doc_ids can change as Meta backend evolves
 - Different operation types (`TEXT_TO_IMAGE` vs `TEXT_TO_VIDEO`)
 - Consistent request structure with UUIDs and session tracking
 - Multipart/mixed response format for streaming results

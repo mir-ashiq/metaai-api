@@ -585,22 +585,27 @@ async def _run_video_job(job_id: str, body: VideoRequest) -> None:
         logger.info(f"[JOB {job_id}] Video generation completed")
         logger.info(f"[JOB {job_id}] Result success: {result.get('success', False)}")
         logger.info(f"[JOB {job_id}] Video URLs count: {len(result.get('video_urls', []))}")
+        logger.info(f"[JOB {job_id}] Result status: {result.get('status', 'UNKNOWN')}")
         
         # Check if video generation actually succeeded AND we have video URLs
         video_urls = result.get('video_urls', [])
-        if result.get('success', False) and video_urls and len(video_urls) > 0:
+        status = result.get('status')
+        if status == "READY" and video_urls and len(video_urls) > 0:
             logger.info(f"[JOB {job_id}] Marking as SUCCEEDED with {len(video_urls)} video(s)")
             for idx, url in enumerate(video_urls, 1):
                 logger.info(f"[JOB {job_id}] Video URL {idx}: {url[:150]}...")
             await jobs.set_result(job_id, result)
         else:
             # Video generation failed or no videos generated - mark job as failed
-            if not result.get('success', False):
-                error_msg = result.get('error', 'Video generation failed')
-                logger.warning(f"[JOB {job_id}] Marking as FAILED: {error_msg}")
+            if status == "PROCESSING":
+                error_msg = result.get('error') or 'Video generation is still processing and no playable URLs are available yet.'
+                logger.warning(f"[JOB {job_id}] Marking as FAILED (not ready): {error_msg}")
+            elif result.get('has_graphql_errors'):
+                error_msg = result.get('error') or 'GraphQL validation failed during video generation.'
+                logger.warning(f"[JOB {job_id}] Marking as FAILED (graphql): {error_msg}")
             else:
-                error_msg = 'Video generation completed but no video URLs were found. The video may still be processing or the extraction failed.'
-                logger.warning(f"[JOB {job_id}] Marking as FAILED: Success=true but no URLs found")
+                error_msg = result.get('error') or 'Video generation failed without playable video URLs.'
+                logger.warning(f"[JOB {job_id}] Marking as FAILED: {error_msg}")
                 logger.debug(f"[JOB {job_id}] Full result: {result}")
             await jobs.set_error(job_id, error_msg)
     except Exception as exc:  # noqa: BLE001

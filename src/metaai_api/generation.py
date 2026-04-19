@@ -5,6 +5,7 @@ Based on captured network requests from meta.ai
 
 import json
 import logging
+import os
 import time
 import uuid
 from typing import Dict, List, Optional, Any, Generator
@@ -20,14 +21,32 @@ class GenerationAPI:
     """
     
     ENDPOINT = "https://www.meta.ai/api/graphql"
-    # ✅ UPDATED March 25, 2026 - Fresh working doc_id from browser capture
-    DOC_ID = "d4e29678d29dc9703db0df437793864c"  # ✅ WORKING (March 2026) - TEXT_TO_IMAGE & TEXT_TO_VIDEO
+    # ✅ UPDATED April 18, 2026 - Fresh working doc_id from browser capture
+    DOC_ID = "2f707e4a86f4b01adba97e1376cbdc14"  # ✅ WORKING (Apr 2026) - TEXT_TO_IMAGE & TEXT_TO_VIDEO
     EXTEND_VIDEO_DOC_ID = "865d6fe804a7ea98fbce7e562b1d61ce"  # EXTEND_VIDEO mutation from HAR
-    IMAGE_DOC_ID = "d4e29678d29dc9703db0df437793864c"  # ✅ Working image generation (fresh from browser)
+    IMAGE_DOC_ID = "2f707e4a86f4b01adba97e1376cbdc14"  # ✅ Working image generation (fresh from browser)
     IMAGE_DOC_ID_ALT = "83c79c30d655e0ae6f20af0e129101e2"  # Fallback (archived)
     FETCH_CONVERSATION_DOC_ID = "9f7f4e20336400df0ea882b6131d2dd6"  # Fetch full conversation
     FETCH_MEDIA_DOC_ID = "10b7bd5aa8b7537e573e49d701a5b21b"  # Fetch video/image by media ID
     POLL_MEDIA_DOC_ID = "335a1ff137a82e22e0a9724d4bf70b6f"  # Poll individual media ID for video status
+    DOC_ID_DEFAULTS = {
+        "TEXT_TO_IMAGE": IMAGE_DOC_ID,
+        "TEXT_TO_VIDEO": DOC_ID,
+        "IMAGE_ALT": IMAGE_DOC_ID_ALT,
+        "EXTEND_VIDEO": EXTEND_VIDEO_DOC_ID,
+        "FETCH_CONVERSATION": FETCH_CONVERSATION_DOC_ID,
+        "FETCH_MEDIA": FETCH_MEDIA_DOC_ID,
+        "POLL_MEDIA": POLL_MEDIA_DOC_ID,
+    }
+    DOC_ID_ENV_KEYS = {
+        "TEXT_TO_IMAGE": ("META_AI_DOC_ID_TEXT_TO_IMAGE", "META_AI_DOC_ID"),
+        "TEXT_TO_VIDEO": ("META_AI_DOC_ID_TEXT_TO_VIDEO", "META_AI_DOC_ID"),
+        "IMAGE_ALT": ("META_AI_DOC_ID_IMAGE_ALT",),
+        "EXTEND_VIDEO": ("META_AI_DOC_ID_EXTEND_VIDEO",),
+        "FETCH_CONVERSATION": ("META_AI_DOC_ID_FETCH_CONVERSATION",),
+        "FETCH_MEDIA": ("META_AI_DOC_ID_FETCH_MEDIA",),
+        "POLL_MEDIA": ("META_AI_DOC_ID_POLL_MEDIA",),
+    }
     DEFAULT_TIMEOUT = 60  # seconds - increased for image generation which can take time
     
     def __init__(self, session: Optional[requests.Session] = None, cookies: Optional[Dict] = None):
@@ -43,9 +62,87 @@ class GenerationAPI:
             self.session.cookies.update(cookies)
         
         self.logger = logging.getLogger(__name__)
+
+        self._doc_id_sources: Dict[str, str] = {}
+        self._doc_ids = self._resolve_doc_ids()
+        self._log_active_doc_ids()
         
         # Initialize HTML scraper for extracting video URLs from pages
         self.html_scraper = MetaAIHTMLScraper(self.session)
+
+    def _resolve_doc_ids(self) -> Dict[str, str]:
+        """Resolve active doc_ids from environment overrides with sane defaults."""
+        active: Dict[str, str] = {}
+
+        for key, default_value in self.DOC_ID_DEFAULTS.items():
+            resolved = None
+            source = "default"
+
+            for env_key in self.DOC_ID_ENV_KEYS.get(key, ()):  # pragma: no branch
+                env_value = os.getenv(env_key)
+                if env_value is None:
+                    continue
+                env_value = env_value.strip()
+                if not env_value:
+                    self.logger.warning("Ignoring empty doc_id override %s for %s", env_key, key)
+                    continue
+                if not env_value.isalnum():
+                    self.logger.warning("doc_id override %s for %s contains non-alphanumeric characters", env_key, key)
+                resolved = env_value
+                source = f"env:{env_key}"
+                break
+
+            active[key] = resolved or default_value
+            self._doc_id_sources[key] = source
+
+        return active
+
+    def _log_active_doc_ids(self) -> None:
+        """Log which doc_ids are active to simplify production debugging."""
+        for key in sorted(self._doc_ids.keys()):
+            self.logger.info(
+                "doc_id[%s]=%s (%s)",
+                key,
+                self._doc_ids[key],
+                self._doc_id_sources.get(key, "default"),
+            )
+
+    def _doc_id(self, key: str) -> str:
+        """Get resolved doc_id for the provided operation key."""
+        return self._doc_ids[key]
+
+    def _normalize_graphql_error(self, error: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize GraphQL error payloads from streaming and JSON responses."""
+        extensions = error.get("extensions") if isinstance(error.get("extensions"), dict) else {}
+        return {
+            "message": error.get("message", "Unknown GraphQL error"),
+            "code": extensions.get("code") or error.get("type") or "UNKNOWN",
+            "locations": error.get("locations") if isinstance(error.get("locations"), list) else [],
+            "path": error.get("path") if isinstance(error.get("path"), list) else [],
+            "extensions": extensions,
+        }
+
+    def _extract_graphql_errors(self, event_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Extract GraphQL errors from a single event payload."""
+        collected: List[Dict[str, Any]] = []
+
+        top_errors = event_data.get("errors")
+        if isinstance(top_errors, list):
+            collected.extend([e for e in top_errors if isinstance(e, dict)])
+
+        data_obj = event_data.get("data")
+        if isinstance(data_obj, dict):
+            nested_errors = data_obj.get("errors")
+            if isinstance(nested_errors, list):
+                collected.extend([e for e in nested_errors if isinstance(e, dict)])
+
+            stream_obj = data_obj.get("sendMessageStream")
+            if isinstance(stream_obj, dict):
+                stream_errors = stream_obj.get("errors")
+                if isinstance(stream_errors, list):
+                    collected.extend([e for e in stream_errors if isinstance(e, dict)])
+
+        return collected
     
     def _generate_unique_id(self) -> int:
         """Generate a unique message ID (13-digit number)"""
@@ -53,7 +150,7 @@ class GenerationAPI:
     
     def _default_user_agent(self) -> str:
         """Default user agent string"""
-        return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0"
+        return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 Edg/147.0.0.0"
 
     def _normalize_media_id(self, media_id: Any) -> Optional[str]:
         """Normalize media IDs and drop transient placeholders such as pending:* tokens."""
@@ -197,17 +294,22 @@ class GenerationAPI:
             if operation == "TEXT_TO_VIDEO":
                 imagine_request = {
                     "operation": operation,
-                    "textToVideoParams": {
+                    "textToImageParams": {
                         "prompt": prompt
-                    }
+                    },
+                    "requestId": kwargs.get("request_id"),
                 }
             else:
                 imagine_request = {
                     "operation": operation,
                     "textToImageParams": {
                         "prompt": prompt
-                    }
+                    },
+                    "requestId": kwargs.get("request_id"),
                 }
+
+        if "requestId" not in imagine_request:
+            imagine_request["requestId"] = kwargs.get("request_id")
 
         variables = {
             "conversationId": conversation_id,
@@ -230,12 +332,12 @@ class GenerationAPI:
             "clientLatitude": None,
             "clientLongitude": None,
             "devicePixelRatio": kwargs.get('device_pixel_ratio', 1.25),
-            "entryPoint": kwargs.get('entry_point', None if not is_extend_video else "KADABRA__IMAGINE_UNIFIED_CANVAS"),
+            "entryPoint": kwargs.get('entry_point', "KADABRA__UNKNOWN" if not is_extend_video else "KADABRA__IMAGINE_UNIFIED_CANVAS"),
             "promptSessionId": prompt_session_id,
             "promptType": None,
             "conversationStarterId": None,
             "userAgent": kwargs.get('user_agent', self._default_user_agent()),
-            "currentBranchPath": kwargs.get('current_branch_path', None if not is_extend_video else "2"),
+            "currentBranchPath": kwargs.get('current_branch_path', "0" if not is_extend_video else "2"),
             "promptEditType": "new_message",
             "userLocale": kwargs.get('locale', "en-US"),
             "userEventId": None,
@@ -314,7 +416,7 @@ class GenerationAPI:
                 self.logger.warning("num_images > 1 is not supported by this endpoint; generating a single image")
         
         payload = {
-            "doc_id": self.IMAGE_DOC_ID,  # Using latest doc_id from bash-curl.json (March 2026)
+            "doc_id": self._doc_id("TEXT_TO_IMAGE"),
             "variables": variables
         }
         
@@ -355,9 +457,9 @@ class GenerationAPI:
         if self._check_response_for_auth_error(response):
             raise Exception("Authentication failed - please refresh cookies using auto_refresh_cookies.py")
 
-        if response.status_code == 400 and payload["doc_id"] == self.IMAGE_DOC_ID:
+        if response.status_code == 400 and payload["doc_id"] == self._doc_id("TEXT_TO_IMAGE"):
             self.logger.warning("Image gen returned 400; retrying with alternate image doc_id")
-            payload["doc_id"] = self.IMAGE_DOC_ID_ALT
+            payload["doc_id"] = self._doc_id("IMAGE_ALT")
             response = self.session.post(
                 self.ENDPOINT,
                 json=payload,
@@ -435,7 +537,7 @@ class GenerationAPI:
         )
         
         payload = {
-            "doc_id": self.DOC_ID,
+            "doc_id": self._doc_id("TEXT_TO_VIDEO"),
             "variables": variables
         }
         
@@ -566,7 +668,7 @@ class GenerationAPI:
         )
 
         payload = {
-            "doc_id": self.EXTEND_VIDEO_DOC_ID,
+            "doc_id": self._doc_id("EXTEND_VIDEO"),
             "variables": variables,
         }
 
@@ -744,7 +846,9 @@ class GenerationAPI:
             "video_objects": [],  # Full video objects with IDs and sourceMedia
             "conversation_id": None,
             "message": None,
-            "events": []
+            "events": [],
+            "has_graphql_errors": False,
+            "graphql_errors": [],
         }
         
         try:
@@ -768,6 +872,27 @@ class GenerationAPI:
                     try:
                         data = json.loads(data_str)
                         result['events'].append(data)
+
+                        normalized_errors = [
+                            self._normalize_graphql_error(err)
+                            for err in self._extract_graphql_errors(data)
+                        ]
+                        if normalized_errors:
+                            known = {
+                                (item.get("message"), item.get("code"))
+                                for item in result["graphql_errors"]
+                            }
+                            for err in normalized_errors:
+                                signature = (err.get("message"), err.get("code"))
+                                if signature in known:
+                                    continue
+                                known.add(signature)
+                                result["graphql_errors"].append(err)
+                                self.logger.error(
+                                    "GraphQL error in SSE stream (%s): %s",
+                                    err.get("code", "UNKNOWN"),
+                                    err.get("message", "Unknown GraphQL error"),
+                                )
                         
                         # Extract main message data
                         if 'data' in data and 'sendMessageStream' in data['data']:
@@ -815,8 +940,22 @@ class GenerationAPI:
                     except json.JSONDecodeError as e:
                         self.logger.debug(f"Could not parse SSE data line: {data_str[:100]}")
                         continue
+
+            result["has_graphql_errors"] = len(result["graphql_errors"]) > 0
+            if result["has_graphql_errors"]:
+                result["streaming_state"] = "FAILED"
             
-            self.logger.info(f"SSE parse complete - Events: {event_count}, State: {result['streaming_state']}, Images: {len(result['images'])} URLs found, Image Objects: {len(result['image_objects'])}, Videos: {len(result['videos'])}, Conv ID: {result['conversation_id']}")
+            self.logger.info(
+                "SSE parse complete - Events: %s, State: %s, Images: %s URLs found, "
+                "Image Objects: %s, Videos: %s, GraphQL errors: %s, Conv ID: %s",
+                event_count,
+                result['streaming_state'],
+                len(result['images']),
+                len(result['image_objects']),
+                len(result['videos']),
+                len(result['graphql_errors']),
+                result['conversation_id'],
+            )
             return result
             
         except Exception as e:
@@ -848,7 +987,7 @@ class GenerationAPI:
         self.logger.info(f"Fetching conversation: {conversation_id}")
         
         payload = {
-            "doc_id": self.FETCH_CONVERSATION_DOC_ID,
+            "doc_id": self._doc_id("FETCH_CONVERSATION"),
             "variables": {
                 "id": conversation_id,
                 "artifactId": None,
@@ -921,7 +1060,7 @@ class GenerationAPI:
         self.logger.info(f"Fetching media by ID: {media_id}")
         
         payload = {
-            "doc_id": self.FETCH_MEDIA_DOC_ID,
+            "doc_id": self._doc_id("FETCH_MEDIA"),
             "variables": {
                 "mediaId": media_id,
                 "mediaIdIsNull": False,
@@ -1528,7 +1667,7 @@ class GenerationAPI:
         self.logger.debug(f"Polling media ID: {media_id}")
         
         payload = {
-            "doc_id": self.POLL_MEDIA_DOC_ID,
+            "doc_id": self._doc_id("POLL_MEDIA"),
             "variables": {
                 "mediaId": media_id,
                 "mediaIdIsNull": False
@@ -1747,7 +1886,7 @@ class GenerationAPI:
         }
         
         payload = {
-            "doc_id": self.FETCH_MEDIA_DOC_ID,
+            "doc_id": self._doc_id("FETCH_MEDIA"),
             "variables": variables
         }
         

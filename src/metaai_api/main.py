@@ -59,8 +59,8 @@ class MetaAI:
         self.session = get_session()
         self.session.headers.update(
             {
-                "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 Edg/147.0.0.0",
             }
         )
         self.access_token = None
@@ -409,7 +409,7 @@ class MetaAI:
         orientation: Optional[str] = None,
     ) -> Union[Dict, Generator[Dict, None, None]]:
         """
-        Send a chat prompt to Meta AI using OAuth + JSON GraphQL SSE.
+        Send a chat prompt to Meta AI using OAuth + GraphQL stream responses.
 
         Args:
             message (str): The message to send.
@@ -428,7 +428,189 @@ class MetaAI:
         Raises:
             Exception: If authentication or request fails.
         """
-        chat_doc_id = "ac0bad4b9787a393e160fb39f43404c1"
+        def _collect_text_from_content_items(content_items: Any) -> str:
+            if not isinstance(content_items, list):
+                return ""
+            fragments: List[str] = []
+            for item in content_items:
+                if not isinstance(item, dict):
+                    continue
+                text = item.get("text")
+                if isinstance(text, str) and text.strip():
+                    fragments.append(text.strip())
+            return "\n".join(fragments).strip()
+
+        def _extract_chat_content_snapshot(event: Dict[str, Any]) -> str:
+            if not isinstance(event, dict):
+                return ""
+
+            snapshots: List[str] = []
+
+            def add_candidate(value: Any) -> None:
+                if isinstance(value, str):
+                    cleaned = value.strip()
+                    if cleaned:
+                        snapshots.append(cleaned)
+
+            data_obj = event.get("data")
+            if isinstance(data_obj, dict):
+                stream_obj = data_obj.get("sendMessageStream")
+                if isinstance(stream_obj, dict):
+                    add_candidate(stream_obj.get("content"))
+                    stream_message = stream_obj.get("message")
+                    if isinstance(stream_message, dict):
+                        add_candidate(stream_message.get("content"))
+                        add_candidate(stream_message.get("text"))
+
+                message_obj = data_obj.get("message")
+                if isinstance(message_obj, dict):
+                    for key in ("content", "text", "streaming_text", "message"):
+                        add_candidate(message_obj.get(key))
+                    composed = message_obj.get("composed_text")
+                    if isinstance(composed, dict):
+                        add_candidate(_collect_text_from_content_items(composed.get("content")))
+
+                node_obj = data_obj.get("node")
+                if isinstance(node_obj, dict):
+                    bot_message = node_obj.get("bot_response_message")
+                    if isinstance(bot_message, dict):
+                        for key in ("content", "text", "streaming_text", "message"):
+                            add_candidate(bot_message.get(key))
+
+                        composed = bot_message.get("composed_text")
+                        if isinstance(composed, dict):
+                            add_candidate(_collect_text_from_content_items(composed.get("content")))
+
+                        nested_content = bot_message.get("content")
+                        if isinstance(nested_content, dict):
+                            agent_steps = nested_content.get("agent_steps")
+                            if isinstance(agent_steps, list):
+                                for step in agent_steps:
+                                    if not isinstance(step, dict):
+                                        continue
+                                    composed_text = step.get("composed_text")
+                                    if isinstance(composed_text, dict):
+                                        add_candidate(
+                                            _collect_text_from_content_items(composed_text.get("content"))
+                                        )
+
+            add_candidate(format_response(event))
+
+            if not snapshots:
+                return ""
+            return max(snapshots, key=len)
+
+        def _extract_chat_conversation_id(event: Dict[str, Any]) -> Optional[str]:
+            if not isinstance(event, dict):
+                return None
+
+            data_obj = event.get("data")
+            if not isinstance(data_obj, dict):
+                return None
+
+            stream_obj = data_obj.get("sendMessageStream")
+            if isinstance(stream_obj, dict):
+                conversation_id = stream_obj.get("conversationId")
+                if isinstance(conversation_id, str) and conversation_id:
+                    return conversation_id
+
+            message_obj = data_obj.get("message")
+            if isinstance(message_obj, dict):
+                for key in ("conversationId", "conversation_id"):
+                    conversation_id = message_obj.get(key)
+                    if isinstance(conversation_id, str) and conversation_id:
+                        return conversation_id
+
+            node_obj = data_obj.get("node")
+            if isinstance(node_obj, dict):
+                bot_message = node_obj.get("bot_response_message")
+                if isinstance(bot_message, dict):
+                    chat_id = bot_message.get("id")
+                    if isinstance(chat_id, str) and "_" in chat_id:
+                        return chat_id.split("_", 1)[0]
+
+            return None
+
+        def _extract_chat_event_errors(event: Dict[str, Any]) -> List[Dict[str, Any]]:
+            errors: List[Dict[str, Any]] = []
+            seen = set()
+
+            def add_error(err: Any) -> None:
+                if not isinstance(err, dict):
+                    return
+                message_text = str(err.get("message") or "Unknown GraphQL error")
+                extensions = err.get("extensions") if isinstance(err.get("extensions"), dict) else {}
+                code = str(extensions.get("code") or err.get("code") or err.get("type") or "UNKNOWN")
+                key = (message_text, code)
+                if key in seen:
+                    return
+                seen.add(key)
+                errors.append(
+                    {
+                        "message": message_text,
+                        "code": code,
+                        "locations": err.get("locations") if isinstance(err.get("locations"), list) else [],
+                        "path": err.get("path") if isinstance(err.get("path"), list) else [],
+                        "extensions": extensions,
+                    }
+                )
+
+            for err in event.get("errors", []):
+                add_error(err)
+
+            data_obj = event.get("data")
+            if isinstance(data_obj, dict):
+                for err in data_obj.get("errors", []):
+                    add_error(err)
+
+                stream_obj = data_obj.get("sendMessageStream")
+                if isinstance(stream_obj, dict):
+                    for err in stream_obj.get("errors", []):
+                        add_error(err)
+
+            return errors
+
+        def _iter_stream_events(response_obj: requests.Response) -> Generator[Dict[str, Any], None, None]:
+            for raw_line in response_obj.iter_lines(decode_unicode=True):
+                if not raw_line:
+                    continue
+
+                line = raw_line.strip()
+                if not line or line.startswith("event:"):
+                    continue
+
+                payload_line = line[5:].strip() if line.startswith("data:") else line
+                if not payload_line or payload_line in {"[DONE]", "null"}:
+                    continue
+
+                try:
+                    parsed = json.loads(payload_line)
+                except Exception:
+                    continue
+
+                if isinstance(parsed, dict):
+                    yield parsed
+                elif isinstance(parsed, list):
+                    for item in parsed:
+                        if isinstance(item, dict):
+                            yield item
+
+        def _resolve_chat_doc_ids() -> List[str]:
+            default_unified_chat_doc_id = "2f707e4a86f4b01adba97e1376cbdc14"
+            candidates = [
+                os.getenv("META_AI_CHAT_DOC_ID"),
+                os.getenv("META_AI_CHAT_DOC_ID_ALT"),
+                "ac0bad4b9787a393e160fb39f43404c1",
+                os.getenv("META_AI_CHAT_DOC_ID_UNIFIED_FALLBACK", default_unified_chat_doc_id),
+            ]
+            resolved: List[str] = []
+            for candidate in candidates:
+                if isinstance(candidate, str) and candidate and candidate not in resolved:
+                    resolved.append(candidate)
+            return resolved
+
+        chat_doc_ids = _resolve_chat_doc_ids()
+        default_unified_chat_doc_id = "2f707e4a86f4b01adba97e1376cbdc14"
 
         if not self.access_token:
             self.access_token = self.extract_access_token_from_page()
@@ -450,52 +632,55 @@ class MetaAI:
             "authorization": f"OAuth {self.access_token}",
             "user-agent": self.session.headers.get(
                 "user-agent",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36 Edg/147.0.0.0",
             ),
             "content-type": "application/json",
             "origin": "https://www.meta.ai",
             "referer": "https://www.meta.ai/",
             "accept-language": "en-US,en;q=0.9",
-            "accept": "text/event-stream",
+            "accept": "text/event-stream, application/json",
         }
 
-        payload = {
-            "doc_id": chat_doc_id,
-            "variables": {
-                "conversationId": conversation_id,
-                "content": message,
-                "userMessageId": str(uuid.uuid4()),
-                "assistantMessageId": str(uuid.uuid4()),
-                "userUniqueMessageId": str(uuid.uuid4().int)[:19],
-                "turnId": str(uuid.uuid4()),
-                "mode": "create",
-                "isNewConversation": is_new_conversation,
-                "clientTimezone": "Asia/Kolkata",
-                "entryPoint": "KADABRA__UNKNOWN",
-                "promptSessionId": str(uuid.uuid4()),
-                "userAgent": headers["user-agent"],
-                "currentBranchPath": "0",
-                "promptEditType": "new_message",
-                "userLocale": "en-US",
-                "attachments": None,
-                "attachmentsV2": attachments_v2 if attachments_v2 else None,
-                "mentions": None,
-                "rewriteOptions": None,
-                "imagineOperationRequest": None,
-            },
-        }
+        def _build_payload(doc_id: str) -> Dict[str, Any]:
+            return {
+                "doc_id": doc_id,
+                "variables": {
+                    "conversationId": conversation_id,
+                    "content": message,
+                    "userMessageId": str(uuid.uuid4()),
+                    "assistantMessageId": str(uuid.uuid4()),
+                    "userUniqueMessageId": str(uuid.uuid4().int)[:19],
+                    "turnId": str(uuid.uuid4()),
+                    "mode": "create",
+                    "isNewConversation": is_new_conversation,
+                    "clientTimezone": "Asia/Kolkata",
+                    "entryPoint": os.getenv("META_AI_CHAT_ENTRY_POINT", "KADABRA__UNKNOWN"),
+                    "promptSessionId": str(uuid.uuid4()),
+                    "userAgent": headers["user-agent"],
+                    "currentBranchPath": os.getenv("META_AI_CHAT_BRANCH_PATH", "0"),
+                    "promptEditType": "new_message",
+                    "userLocale": "en-US",
+                    "attachments": None,
+                    "attachmentsV2": attachments_v2 if attachments_v2 else None,
+                    "mentions": None,
+                    "rewriteOptions": None,
+                    "imagineOperationRequest": None,
+                },
+            }
 
-        response = self.session.post(
-            "https://www.meta.ai/api/graphql",
-            headers=headers,
-            json=payload,
-            stream=True,
-            timeout=(10, 120),
-        )
-
-        if self._check_response_for_auth_error(response):
-            raise Exception("Authentication failed - please refresh cookies")
-        response.raise_for_status()
+        def _post_chat_request(doc_id: str) -> requests.Response:
+            response_obj = self.session.post(
+                "https://www.meta.ai/api/graphql",
+                headers=headers,
+                json=_build_payload(doc_id),
+                stream=True,
+                timeout=(10, 120),
+            )
+            if self._check_response_for_auth_error(response_obj):
+                raise Exception("Authentication failed - please refresh cookies")
+            response_obj.raise_for_status()
+            return response_obj
 
         def _sanitize_assistant_text(
             text: str,
@@ -533,73 +718,153 @@ class MetaAI:
             normalized = re.sub(r"<inline>.*?</inline>", "", normalized)
             return normalized.strip()
 
+        def _graph_error_summary(errors: List[Dict[str, Any]]) -> str:
+            if not errors:
+                return "Unknown GraphQL error"
+            first = errors[0]
+            return f"GraphQL error ({first.get('code', 'UNKNOWN')}): {first.get('message', 'Unknown GraphQL error')}"
+
+        logged_unified_doc_id_warning = False
+
+        def _maybe_log_unified_doc_id(doc_id: str) -> None:
+            nonlocal logged_unified_doc_id_warning
+            if doc_id == default_unified_chat_doc_id and not logged_unified_doc_id_warning:
+                logging.info(
+                    "Using unified chat fallback doc_id %s; backend may include create/media suggestions in chat replies",
+                    doc_id,
+                )
+                logged_unified_doc_id_warning = True
+
         def _stream_messages() -> Generator[Dict, None, None]:
-            last_snapshot = ""
-            for raw_line in response.iter_lines(decode_unicode=True):
-                if not raw_line or not raw_line.startswith("data:"):
-                    continue
+            last_errors: List[Dict[str, Any]] = []
+            last_transport_error: Optional[str] = None
+
+            for doc_id in chat_doc_ids:
+                _maybe_log_unified_doc_id(doc_id)
                 try:
-                    event = json.loads(raw_line[5:].strip())
-                except Exception:
+                    response = _post_chat_request(doc_id)
+                except requests.RequestException as exc:
+                    last_transport_error = str(exc)
+                    logging.warning(
+                        "Chat stream request with doc_id %s failed before parsing response: %s",
+                        doc_id,
+                        exc,
+                    )
                     continue
 
-                stream_data = event.get("data", {}).get("sendMessageStream", {})
-                content = stream_data.get("content")
-                if not content:
-                    continue
+                yielded_any = False
+                last_snapshot = ""
+                errors_for_attempt: List[Dict[str, Any]] = []
 
-                if not last_snapshot:
-                    delta = content
-                elif content.startswith(last_snapshot):
-                    delta = content[len(last_snapshot):]
-                elif content == last_snapshot:
-                    delta = ""
-                else:
-                    # If stream resets or changes format, fall back to the latest content.
-                    delta = content
+                try:
+                    for event in _iter_stream_events(response):
+                        conv_id = _extract_chat_conversation_id(event)
+                        if conv_id:
+                            self.external_conversation_id = conv_id
 
-                last_snapshot = content
-                delta = _normalize_assistant_text(delta)
-                if not delta:
-                    continue
+                        errors_for_attempt.extend(_extract_chat_event_errors(event))
 
-                if stream_data.get("conversationId"):
-                    self.external_conversation_id = stream_data["conversationId"]
+                        snapshot = _extract_chat_content_snapshot(event)
+                        if not snapshot:
+                            continue
 
-                yield {"message": delta, "sources": [], "media": []}
+                        if not last_snapshot:
+                            delta = snapshot
+                        elif snapshot.startswith(last_snapshot):
+                            delta = snapshot[len(last_snapshot):]
+                        elif snapshot == last_snapshot:
+                            delta = ""
+                        else:
+                            delta = snapshot
 
-            response.close()
+                        last_snapshot = snapshot
+                        delta = _normalize_assistant_text(delta)
+                        if not delta:
+                            continue
+
+                        yielded_any = True
+                        yield {"message": delta, "sources": [], "media": []}
+                finally:
+                    response.close()
+
+                if yielded_any:
+                    return
+
+                last_errors = errors_for_attempt
+                if errors_for_attempt:
+                    logging.warning(
+                        "Chat stream attempt with doc_id %s returned GraphQL errors; trying next fallback if available",
+                        doc_id,
+                    )
+
+            if last_errors:
+                raise Exception(_graph_error_summary(last_errors))
+            if last_transport_error:
+                raise Exception(last_transport_error)
+            raise Exception(
+                f"No chat response parsed from Meta AI stream (doc_ids tried: {', '.join(chat_doc_ids)})"
+            )
 
         if stream:
             return _stream_messages()
 
-        last_stream_content = ""
-        for raw_line in response.iter_lines(decode_unicode=True):
-            if not raw_line or not raw_line.startswith("data:"):
-                continue
+        last_errors: List[Dict[str, Any]] = []
+        last_transport_error: Optional[str] = None
+
+        for doc_id in chat_doc_ids:
+            _maybe_log_unified_doc_id(doc_id)
             try:
-                event = json.loads(raw_line[5:].strip())
-            except Exception:
+                response = _post_chat_request(doc_id)
+            except requests.RequestException as exc:
+                last_transport_error = str(exc)
+                logging.warning(
+                    "Chat request with doc_id %s failed before parsing response: %s",
+                    doc_id,
+                    exc,
+                )
                 continue
 
-            stream_data = event.get("data", {}).get("sendMessageStream", {})
-            content = stream_data.get("content")
-            if content:
-                last_stream_content = content
-            if stream_data.get("conversationId"):
-                self.external_conversation_id = stream_data["conversationId"]
+            last_stream_content = ""
+            errors_for_attempt: List[Dict[str, Any]] = []
 
-        response.close()
+            try:
+                for event in _iter_stream_events(response):
+                    conv_id = _extract_chat_conversation_id(event)
+                    if conv_id:
+                        self.external_conversation_id = conv_id
 
-        final_message = _sanitize_assistant_text(
-            _normalize_assistant_text(last_stream_content),
-            message,
-            remove_embedded_prompt=True,
+                    errors_for_attempt.extend(_extract_chat_event_errors(event))
+
+                    content = _extract_chat_content_snapshot(event)
+                    if content:
+                        last_stream_content = content
+            finally:
+                response.close()
+
+            final_message = _sanitize_assistant_text(
+                _normalize_assistant_text(last_stream_content),
+                message,
+                remove_embedded_prompt=True,
+            )
+
+            if final_message:
+                return {"message": final_message, "sources": [], "media": []}
+
+            last_errors = errors_for_attempt
+            if errors_for_attempt:
+                logging.warning(
+                    "Chat request with doc_id %s returned GraphQL errors; trying next fallback if available",
+                    doc_id,
+                )
+
+        if last_errors:
+            raise Exception(_graph_error_summary(last_errors))
+        if last_transport_error:
+            raise Exception(last_transport_error)
+
+        raise Exception(
+            f"No chat response parsed from Meta AI stream (doc_ids tried: {', '.join(chat_doc_ids)})"
         )
-        if not final_message:
-            raise Exception("No chat response parsed from Meta AI stream")
-
-        return {"message": final_message, "sources": [], "media": []}
 
     def retry(self, message: str, stream: bool = False, attempts: int = 0, new_conversation: bool = False, images: Optional[list] = None, media_ids: Optional[list] = None, attachment_metadata: Optional[Dict[str, Any]] = None, is_image_generation: bool = False, orientation: Optional[str] = None):
         """
@@ -960,6 +1225,60 @@ class MetaAI:
         references = search_results["references"]
         return references
 
+    @staticmethod
+    def _extract_graphql_errors(response: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Extract normalized GraphQL errors from parser output and raw events."""
+        errors: List[Dict[str, Any]] = []
+        seen = set()
+
+        def add_error(err: Any) -> None:
+            if not isinstance(err, dict):
+                return
+            message = str(err.get("message") or "Unknown GraphQL error")
+            extensions = err.get("extensions") if isinstance(err.get("extensions"), dict) else {}
+            code = str(extensions.get("code") or err.get("code") or err.get("type") or "UNKNOWN")
+            key = (message, code)
+            if key in seen:
+                return
+            seen.add(key)
+            errors.append(
+                {
+                    "message": message,
+                    "code": code,
+                    "locations": err.get("locations") if isinstance(err.get("locations"), list) else [],
+                    "path": err.get("path") if isinstance(err.get("path"), list) else [],
+                    "extensions": extensions,
+                }
+            )
+
+        for err in response.get("graphql_errors", []):
+            add_error(err)
+
+        for event in response.get("events", []):
+            if not isinstance(event, dict):
+                continue
+            for err in event.get("errors", []):
+                add_error(err)
+            data_obj = event.get("data")
+            if isinstance(data_obj, dict):
+                for err in data_obj.get("errors", []):
+                    add_error(err)
+                stream_obj = data_obj.get("sendMessageStream")
+                if isinstance(stream_obj, dict):
+                    for err in stream_obj.get("errors", []):
+                        add_error(err)
+
+        return errors
+
+    @staticmethod
+    def _graphql_error_summary(errors: List[Dict[str, Any]]) -> str:
+        if not errors:
+            return "Unknown GraphQL error"
+        primary = errors[0]
+        message = primary.get("message", "Unknown GraphQL error")
+        code = primary.get("code", "UNKNOWN")
+        return f"GraphQL error ({code}): {message}"
+
     def generate_image_new(
         self,
         prompt: str,
@@ -1009,28 +1328,51 @@ class MetaAI:
                 num_images=num_images,
                 **kwargs
             )
+
+            graphql_errors = self._extract_graphql_errors(response)
+            has_graphql_errors = bool(graphql_errors) or bool(response.get("has_graphql_errors"))
             
             # Extract image URLs with type safety
             image_urls = response.get('images') or self.generation_api.extract_media_urls(response)
             if image_urls and isinstance(image_urls, list) and len(image_urls) > 0 and isinstance(image_urls[0], dict):
                 image_urls = [img.get('url') for img in image_urls if isinstance(img, dict) and img.get('url')]
             
-            # Check if we actually got URLs
-            has_urls = image_urls and len(image_urls) > 0
+            has_urls = bool(image_urls and len(image_urls) > 0)
+            if has_graphql_errors:
+                status = "FAILED"
+            elif has_urls:
+                status = "READY"
+            else:
+                status = "PROCESSING"
+
+            success = has_urls and not has_graphql_errors
+            error_message = None
+            if has_graphql_errors:
+                error_message = self._graphql_error_summary(graphql_errors)
+            elif status == "PROCESSING":
+                error_message = "No image URLs returned yet - images may still be processing"
             
             return {
-                "success": has_urls,
+                "success": success,
                 "prompt": prompt,
                 "orientation": orientation,
                 "num_images": num_images,
                 "image_urls": image_urls if has_urls else [],
+                "status": status,
+                "processing": status == "PROCESSING",
+                "has_graphql_errors": has_graphql_errors,
+                "graphql_errors": graphql_errors,
                 "response": response,
-                "error": None if has_urls else "No image URLs returned - images may still be processing"
+                "error": error_message,
             }
         except Exception as e:
             logging.error(f"Error generating images: {e}")
             return {
                 "success": False,
+                "status": "FAILED",
+                "processing": False,
+                "has_graphql_errors": False,
+                "graphql_errors": [],
                 "error": str(e),
                 "prompt": prompt
             }
@@ -1089,6 +1431,9 @@ class MetaAI:
                 fetch_urls=False,  # Don't use old fetch method
                 **kwargs
             )
+
+            graphql_errors = self._extract_graphql_errors(response)
+            has_graphql_errors = bool(graphql_errors) or bool(response.get("has_graphql_errors"))
             
             # Extract conversation ID
             conversation_id = response.get('conversation_id')
@@ -1119,9 +1464,9 @@ class MetaAI:
                     if vid_id and vid_id not in media_ids:
                         media_ids.append(vid_id)
 
-            actual_video_objects = []
-            actual_video_urls = []
-            if media_ids and conversation_id:
+            actual_video_objects: List[Dict[str, Any]] = []
+            actual_video_urls: List[str] = []
+            if not has_graphql_errors and media_ids and conversation_id:
                 actual_video_objects = self.generation_api.fetch_video_urls_by_media_id(
                     video_ids=media_ids,
                     conversation_id=conversation_id,
@@ -1135,7 +1480,7 @@ class MetaAI:
                 ]
             
             # Auto-poll for video IDs if enabled
-            if auto_poll and conversation_id and not media_ids:
+            if not has_graphql_errors and auto_poll and conversation_id and not media_ids:
                 logging.info(f"Auto-polling for video IDs (max {max_poll_attempts} attempts, {poll_wait_seconds}s intervals)...")
                 video_page_urls = self.generation_api.poll_for_video_ids(
                     conversation_id=conversation_id,
@@ -1161,21 +1506,45 @@ class MetaAI:
                     ]
             
             has_urls = len(actual_video_urls) > 0
+            has_media = has_urls or len(media_ids) > 0
+            if has_graphql_errors:
+                status = "FAILED"
+            elif has_urls:
+                status = "READY"
+            elif media_ids or conversation_id:
+                status = "PROCESSING"
+            else:
+                status = "FAILED"
+
+            success = (not has_graphql_errors) and has_media
+            error_message = None
+            if has_graphql_errors:
+                error_message = self._graphql_error_summary(graphql_errors)
+            elif status == "FAILED":
+                error_message = "Video generation returned no media IDs or URLs"
             
             return {
-                "success": True,  # Request submitted successfully
+                "success": success,
                 "prompt": prompt,
                 "conversation_id": conversation_id,
                 "media_ids": media_ids,
                 "video_urls": actual_video_urls,
                 "video_objects": actual_video_objects or video_objects,
-                "processing": not has_urls,  # True if video IDs not yet available
-                "response": response
+                "status": status,
+                "processing": status == "PROCESSING",
+                "has_graphql_errors": has_graphql_errors,
+                "graphql_errors": graphql_errors,
+                "response": response,
+                "error": error_message,
             }
         except Exception as e:
             logging.error(f"Error generating video: {e}")
             return {
                 "success": False,
+                "status": "FAILED",
+                "processing": False,
+                "has_graphql_errors": False,
+                "graphql_errors": [],
                 "error": str(e),
                 "prompt": prompt
             }
@@ -1287,6 +1656,9 @@ class MetaAI:
                 **kwargs,
             )
 
+            graphql_errors = self._extract_graphql_errors(response)
+            has_graphql_errors = bool(graphql_errors) or bool(response.get("has_graphql_errors"))
+
             conv_id = response.get('conversation_id') or conversation_id
             media_ids = [
                 str(mid)
@@ -1295,7 +1667,7 @@ class MetaAI:
             ]
 
             video_urls: List[str] = []
-            if auto_poll and media_ids and conv_id:
+            if not has_graphql_errors and auto_poll and media_ids and conv_id:
                 video_objects = self.generation_api.fetch_video_urls_by_media_id(
                     video_ids=media_ids,
                     conversation_id=conv_id,
@@ -1309,20 +1681,44 @@ class MetaAI:
                 ]
 
             has_urls = len(video_urls) > 0
+            has_media = has_urls or len(media_ids) > 0
+            if has_graphql_errors:
+                status = "FAILED"
+            elif has_urls:
+                status = "READY"
+            elif media_ids or conv_id:
+                status = "PROCESSING"
+            else:
+                status = "FAILED"
+
+            success = (not has_graphql_errors) and has_media
+            error_message = None
+            if has_graphql_errors:
+                error_message = self._graphql_error_summary(graphql_errors)
+            elif status == "FAILED":
+                error_message = "Extend video returned no media IDs or URLs"
 
             return {
-                "success": True,
+                "success": success,
                 "source_media_id": str(media_id),
                 "conversation_id": conv_id,
                 "media_ids": media_ids,
                 "video_urls": video_urls,
-                "processing": not has_urls,
+                "status": status,
+                "processing": status == "PROCESSING",
+                "has_graphql_errors": has_graphql_errors,
+                "graphql_errors": graphql_errors,
                 "response": response,
+                "error": error_message,
             }
         except Exception as e:
             logging.error(f"Error extending video: {e}")
             return {
                 "success": False,
+                "status": "FAILED",
+                "processing": False,
+                "has_graphql_errors": False,
+                "graphql_errors": [],
                 "error": str(e),
                 "source_media_id": str(media_id),
             }
