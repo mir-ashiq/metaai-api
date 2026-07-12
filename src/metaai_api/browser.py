@@ -270,3 +270,11 @@ class BrowserBackend:
         except Exception:
             pass
         self._ready = False
+
+    def new_chat(self) -> None:
+        """Start a new chat conversation."""
+        try:
+            self._run("find", "role", "link", "click", "--name", "New chat", timeout=10)
+            time.sleep(2)
+        except Exception:
+            pass

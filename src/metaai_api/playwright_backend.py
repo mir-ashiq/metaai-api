@@ -266,3 +266,13 @@ class PlaywrightBackend:
         except Exception:
             pass
         self._ready = False
+
+    def new_chat(self) -> None:
+        """Start a new chat conversation."""
+        try:
+            new_chat_link = self._page.query_selector('a:has-text("New chat")')
+            if new_chat_link:
+                new_chat_link.click()
+                time.sleep(2)
+        except Exception:
+            pass

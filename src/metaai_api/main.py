@@ -37,7 +37,7 @@ from .exceptions import (
 from .generation import GenerationAPI
 from .utils import DEFAULT_UA, get_cookies_from_env, logger
 
-__version__ = "5.1.0"
+__version__ = "5.2.0"
 
 
 class MetaAI:
@@ -173,6 +173,7 @@ class MetaAI:
             ```
         """
         timeout = kwargs.get("timeout", 120)
+        self._get_browser()  # Ensure browser is initialized
         return self.generation_api.generate_image(prompt, timeout=timeout)
 
     def generate_image(self, prompt: str, **kwargs) -> Dict[str, Any]:
@@ -271,12 +272,11 @@ class MetaAI:
             print(reply["message"])
             ```
         """
-        browser = self._get_browser()
+        self._get_browser()  # Ensure browser is initialized
         if new_conversation:
-            browser._run("find", "role", "link", "click", "--name", "New chat", timeout=10)
-            time.sleep(2)
+            self._browser.new_chat()
 
-        result = browser.send_message(message, timeout=timeout, thinking_mode=thinking_mode)
+        result = self._browser.send_message(message, timeout=timeout, thinking_mode=thinking_mode)
         return {
             "message": result.get("text", ""),
             "conversation_id": result.get("conversation_id"),
@@ -298,14 +298,13 @@ class MetaAI:
         Returns:
             List of dicts with 'id', 'title', 'url' keys.
         """
-        browser = self._get_browser()
-        return browser.list_conversations()
+        self._get_browser()  # Ensure browser is initialized
+        return self._browser.list_conversations()
 
     def new_conversation(self) -> None:
         """Start a new chat conversation."""
-        browser = self._get_browser()
-        browser._run("find", "role", "link", "click", "--name", "New chat", timeout=10)
-        time.sleep(2)
+        self._get_browser()  # Ensure browser is initialized
+        self._browser.new_chat()
 
     # ================================================================
     # Media Fetching (HTTP)
