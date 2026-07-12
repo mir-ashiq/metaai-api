@@ -37,7 +37,7 @@ from .exceptions import (
 from .generation import GenerationAPI
 from .utils import DEFAULT_UA, get_cookies_from_env, logger
 
-__version__ = "5.0.0"
+__version__ = "5.1.0"
 
 
 class MetaAI:
@@ -112,15 +112,32 @@ class MetaAI:
             access_token=self.access_token,
         )
 
-    def _get_browser(self) -> BrowserBackend:
-        """Get or create the browser backend."""
+    def _get_browser(self):
+        """Get or create the browser backend.
+
+        Automatically selects Playwright (pure Python, no Node.js) if available,
+        otherwise falls back to agent-browser.
+        """
         if self._browser is None:
-            self._browser = BrowserBackend(
-                cookies=self.cookies,
-                headed=self.headed,
-                session_name=self.session_name,
-                user_agent=self.user_agent,
-            )
+            # Try Playwright first (works on Colab, no Node.js needed)
+            try:
+                from .playwright_backend import PlaywrightBackend
+                self._browser = PlaywrightBackend(
+                    cookies=self.cookies,
+                    headed=self.headed,
+                    session_name=self.session_name,
+                    user_agent=self.user_agent,
+                )
+                logger.info("Using Playwright backend")
+            except ImportError:
+                # Fall back to agent-browser
+                self._browser = BrowserBackend(
+                    cookies=self.cookies,
+                    headed=self.headed,
+                    session_name=self.session_name,
+                    user_agent=self.user_agent,
+                )
+                logger.info("Using agent-browser backend")
             self._browser.setup()
             self.generation_api.browser = self._browser
         return self._browser
