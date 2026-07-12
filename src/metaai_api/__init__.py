@@ -10,7 +10,7 @@ Uses browser automation (agent-browser) as the primary method, which works
 for ANY prompt. Also supports legacy HTTP/WebSocket methods for advanced users.
 """
 
-__version__ = "3.0.0"
+__version__ = "5.0.0"
 __author__ = "Ashiq Hussain Mir"
 __license__ = "MIT"
 __url__ = "https://github.com/mir-ashiq/metaai-api"
