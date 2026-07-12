@@ -37,7 +37,7 @@ from .exceptions import (
 from .generation import GenerationAPI
 from .utils import DEFAULT_UA, get_cookies_from_env, logger
 
-__version__ = "5.2.0"
+__version__ = "5.3.0"
 
 
 class MetaAI:

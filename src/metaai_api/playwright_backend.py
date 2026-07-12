@@ -87,15 +87,35 @@ class PlaywrightBackend:
         context.add_cookies(cookie_list)
 
         self._page = context.new_page()
-        self._page.goto("https://www.meta.ai/", wait_until="networkidle", timeout=60000)
-        time.sleep(3)
+        self._page.goto("https://www.meta.ai/", wait_until="domcontentloaded", timeout=60000)
+        time.sleep(5)
+
+        # Dismiss any cookie consent / overlay dialogs
+        self._dismiss_overlays()
 
         # Reload to apply cookies
-        self._page.reload(wait_until="networkidle", timeout=60000)
-        time.sleep(3)
+        self._page.reload(wait_until="domcontentloaded", timeout=60000)
+        time.sleep(5)
+        self._dismiss_overlays()
 
         self._ready = True
         logger.info("Playwright backend ready")
+
+    def _dismiss_overlays(self):
+        """Dismiss cookie consent, dialogs, and overlays that might block the input."""
+        try:
+            # Try clicking "Connect" / "Dismiss" / "Accept" buttons
+            for text in ["Dismiss", "Connect", "Accept all", "Accept", "Got it", "Close", "OK"]:
+                try:
+                    btn = self._page.query_selector(f'button:has-text("{text}")')
+                    if btn and btn.is_visible():
+                        btn.click()
+                        time.sleep(1)
+                        logger.info(f"Dismissed overlay: {text}")
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     def send_message(self, prompt: str, timeout: int = 120,
                      thinking_mode: bool = False) -> Dict[str, Any]:
@@ -108,21 +128,73 @@ class PlaywrightBackend:
         else:
             self._switch_mode("Instant")
 
-        # Find and fill the input
-        try:
-            input_selector = 'div[data-testid="composer-input"] [contenteditable], textarea, [role="textbox"]'
-            self._page.wait_for_selector(input_selector, timeout=10000)
-            self._page.click(input_selector)
-            time.sleep(0.5)
-            self._page.keyboard.type(prompt)
-            time.sleep(0.5)
-            self._page.keyboard.press("Enter")
-        except Exception as e:
-            logger.error(f"Failed to type prompt: {e}")
-            raise ConnectionError(f"Could not find chat input: {e}")
+        # Dismiss any overlays that appeared
+        self._dismiss_overlays()
 
-        # Wait for response
-        urls, text = self._wait_for_response(timeout)
+        # Find and fill the input — try multiple selectors
+        typed = False
+        selectors = [
+            'textarea[data-testid="composer-input"]',
+            'div[data-testid="composer-input"] [contenteditable]',
+            'textarea[placeholder*="Ask Meta"]',
+            '[role="textbox"]',
+            'textarea',
+        ]
+
+        for selector in selectors:
+            try:
+                el = self._page.query_selector(selector)
+                if el:
+                    # Scroll into view
+                    el.scroll_into_view_if_needed(timeout=5000)
+                    time.sleep(0.5)
+                    # Try clicking
+                    el.click(timeout=5000)
+                    time.sleep(0.3)
+                    # Type the prompt
+                    self._page.keyboard.type(prompt, delay=30)
+                    time.sleep(0.5)
+                    self._page.keyboard.press("Enter")
+                    typed = True
+                    logger.info(f"Typed prompt using selector: {selector}")
+                    break
+            except Exception as e:
+                logger.debug(f"Selector {selector} failed: {e}")
+                continue
+
+        if not typed:
+            # Last resort: use JavaScript to find and fill the input
+            try:
+                self._page.evaluate(f"""
+                    () => {{
+                        const ta = document.querySelector('textarea[data-testid="composer-input"]');
+                        if (ta) {{
+                            ta.focus();
+                            ta.value = {json.dumps(prompt)};
+                            ta.dispatchEvent(new Event('input', {{bubbles: true}}));
+                        }}
+                    }}
+                """)
+                time.sleep(0.5)
+                self._page.keyboard.press("Enter")
+                typed = True
+                logger.info("Typed prompt using JavaScript fallback")
+            except Exception as e:
+                raise ConnectionError(f"Could not find chat input: {e}")
+
+        # Record existing image URLs before waiting for response
+        existing_urls: Set[str] = set()
+        try:
+            elements = self._page.query_selector_all('img[src], video[src], source[src], a[href]')
+            for el in elements:
+                src = el.get_attribute("src") or el.get_attribute("href") or ""
+                if src and "fbcdn" in src:
+                    existing_urls.add(src)
+        except Exception:
+            pass
+
+        # Wait for response — only collect NEW URLs
+        urls, text = self._wait_for_response(timeout, existing_urls)
         conv_id = self._get_conversation_id()
 
         return {"urls": urls, "text": text, "conversation_id": conv_id}
@@ -130,13 +202,10 @@ class PlaywrightBackend:
     def _switch_mode(self, mode_name: str) -> None:
         """Switch between Instant and Thinking modes."""
         try:
-            # Click the mode button
             mode_button = self._page.query_selector('button:has-text("Instant"), button:has-text("Thinking")')
-            if mode_button:
+            if mode_button and mode_button.is_visible():
                 mode_button.click()
                 time.sleep(1)
-
-                # Click the desired mode
                 mode_item = self._page.query_selector(f'[role="menuitemcheckbox"]:has-text("{mode_name}")')
                 if mode_item:
                     mode_item.click()
@@ -144,22 +213,23 @@ class PlaywrightBackend:
         except Exception:
             pass
 
-    def _wait_for_response(self, timeout: int) -> Tuple[List[str], str]:
-        """Wait for either media URLs or text response."""
+    def _wait_for_response(self, timeout: int, existing_urls: Optional[Set[str]] = None) -> Tuple[List[str], str]:
+        """Wait for either media URLs or text response. Only collect NEW URLs."""
         urls: Set[str] = set()
         last_text = ""
         text_stable_count = 0
         start = time.time()
+        existing = existing_urls or set()
 
         while time.time() - start < timeout:
             time.sleep(2)
 
-            # Check for media URLs
+            # Check for NEW media URLs only
             try:
                 elements = self._page.query_selector_all('img[src], video[src], source[src], a[href]')
                 for el in elements:
                     src = el.get_attribute("src") or el.get_attribute("href") or ""
-                    if src and "fbcdn" in src and is_media_url(src):
+                    if src and "fbcdn" in src and is_media_url(src) and src not in existing:
                         urls.add(src)
             except Exception:
                 pass
@@ -244,16 +314,33 @@ class PlaywrightBackend:
                 ref_button.click()
                 time.sleep(2)
 
-            input_selector = 'div[data-testid="composer-input"] [contenteditable], textarea, [role="textbox"]'
-            self._page.click(input_selector)
-            self._page.keyboard.type(prompt)
-            time.sleep(0.5)
-            self._page.keyboard.press("Enter")
+            self._dismiss_overlays()
+            for selector in ['textarea[data-testid="composer-input"]', '[role="textbox"]', 'textarea']:
+                try:
+                    el = self._page.query_selector(selector)
+                    if el:
+                        el.click(timeout=5000)
+                        self._page.keyboard.type(prompt, delay=30)
+                        time.sleep(0.5)
+                        self._page.keyboard.press("Enter")
+                        break
+                except Exception:
+                    continue
 
             urls, text = self._wait_for_response(timeout)
             return {"urls": urls, "text": text, "conversation_id": self._get_conversation_id()}
         except Exception as e:
             return {"urls": [], "text": "", "conversation_id": "", "error": str(e)}
+
+    def new_chat(self) -> None:
+        """Start a new chat conversation."""
+        try:
+            link = self._page.query_selector('a:has-text("New chat")')
+            if link:
+                link.click()
+                time.sleep(2)
+        except Exception:
+            pass
 
     def close(self) -> None:
         try:
@@ -266,13 +353,3 @@ class PlaywrightBackend:
         except Exception:
             pass
         self._ready = False
-
-    def new_chat(self) -> None:
-        """Start a new chat conversation."""
-        try:
-            new_chat_link = self._page.query_selector('a:has-text("New chat")')
-            if new_chat_link:
-                new_chat_link.click()
-                time.sleep(2)
-        except Exception:
-            pass
