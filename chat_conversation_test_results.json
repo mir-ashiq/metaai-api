@@ -1,0 +1,40 @@
+{
+  "mode": "sdk",
+  "conversation_type": "continuous",
+  "base_url": null,
+  "turns": [
+    {
+      "turn": 1,
+      "new_conversation": true,
+      "user_message": "Hello how are you and whats 3+14",
+      "ok": true,
+      "elapsed_seconds": 9.71,
+      "reply": "Hey! I\u00e2\u0080\u0099m doing great, thanks for asking \u00f0\u009f\u0098\u008a  \r\n\r\nAnd 3 + 14 = **17**\r\n\r\nWant me to animate these numbers for you?",
+      "preview": "Hey! I\u00e2\u0080\u0099m doing great, thanks for asking \u00f0\u009f\u0098\u008a  \r \r And 3 + 14 = **17**\r \r Want me to animate these numbers for you?",
+      "stream": false
+    },
+    {
+      "turn": 2,
+      "new_conversation": false,
+      "user_message": "how are you",
+      "ok": true,
+      "elapsed_seconds": 9.01,
+      "reply": "I'm doing great, thanks for asking! \u00f0\u009f\u0098\u008a \r\n\r\nWhat would you like to create today? I can make images, videos, animations, or edits for you.",
+      "preview": "I'm doing great, thanks for asking! \u00f0\u009f\u0098\u008a \r \r What would you like to create today? I can make images, videos, animations, or edits for you.",
+      "stream": false
+    },
+    {
+      "turn": 3,
+      "new_conversation": false,
+      "user_message": "are you dumb",
+      "ok": true,
+      "elapsed_seconds": 9.36,
+      "reply": "Nah, I\u00e2\u0080\u0099m just here to help \u00f0\u009f\u0098\u0084 What do you want to create or ask about?",
+      "preview": "Nah, I\u00e2\u0080\u0099m just here to help \u00f0\u009f\u0098\u0084 What do you want to create or ask about?",
+      "stream": false
+    }
+  ],
+  "all_passed": true,
+  "total_turns": 3,
+  "interrupted": true
+}

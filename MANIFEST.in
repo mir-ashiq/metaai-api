@@ -1,0 +1,7 @@
+include README.md
+include LICENSE
+include QUICK_START.md
+include GENERATION_API.md
+include CHANGES_AND_COOKIES.md
+recursive-include src/metaai_api *.py
+recursive-include examples *.py

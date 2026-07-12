@@ -1,0 +1,15 @@
+version: "3.8"
+services:
+  metaai-server:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - META_AI_DATR=${META_AI_DATR}
+      - META_AI_ECTO_1_SESS=${META_AI_ECTO_1_SESS}
+      - META_AI_ACCESS_TOKEN=${META_AI_ACCESS_TOKEN:-}
+      - META_AI_API_KEY=${META_AI_API_KEY:-}
+      - META_AI_HEADED=false
+      - HOST=0.0.0.0
+      - PORT=8000
+    restart: unless-stopped
