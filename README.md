@@ -1,8 +1,14 @@
 # metaai-api
 
-Unofficial Python SDK and API server for **Meta AI** — generate images, chat with Llama, and manage conversations. No API key required, just your browser cookies.
+Unofficial Python SDK and API server for Meta AI — generate images, chat with Llama, and manage conversations. No API key required, just your browser cookies.
 
-> **⚠️ Disclaimer**: This is an unofficial, reverse-engineered client. It is not affiliated with, endorsed by, or sponsored by Meta. Use at your own risk and in compliance with Meta's Terms of Service. Cookie-based authentication may break at any time as Meta updates their platform.
+> ⚠️ Disclaimer: This is an unofficial, reverse-engineered client. It is not affiliated with, endorsed by, or sponsored by Meta. Use at your own risk and in compliance with Meta's Terms of Service. Cookie-based authentication may break at any time as Meta updates their platform.
+
+> **🔄 Looking for Meta's former AI video creation features?**
+>
+> Meta's AI video creation experience has moved to **Vibes.ai**. For Vibes.ai video generation, image generation, TTS, lip-sync, timeline editing, media management, and other features, see **[VibesAI-api](https://github.com/mir-ashiq/VibesAI-api)**.
+>
+> **→ [VibesAI-api — Unofficial Python API for Vibes.ai](https://github.com/mir-ashiq/VibesAI-api)**
 
 ## What's New in v3.0.0
 
